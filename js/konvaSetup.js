@@ -11,9 +11,40 @@ let stage;
 let layer;
 export let tr;
 let backgroundRect;
-const mockups = [];
 export let lastAddedMockup = null;
 let initialStageHeight;
+let placeholderIconImagePromise;
+
+const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
+
+function setSelectionButtonsDisabled(disabled) {
+    UI.deleteBtn.disabled = disabled;
+    UI.downloadFrameBtn.disabled = disabled;
+    UI.updateFrameBtn.disabled = disabled;
+}
+
+function clearSelection() {
+    AppState.setCurrentSelectedMockup(null);
+    tr.nodes([]);
+    setSelectionButtonsDisabled(true);
+    layer.batchDraw();
+}
+
+function selectMockupGroup(group) {
+    AppState.setCurrentSelectedMockup(group);
+    tr.nodes([group]);
+    group.moveToTop();
+    tr.moveToTop();
+    setSelectionButtonsDisabled(false);
+    layer.batchDraw();
+}
+
+function getPlaceholderIconImage() {
+    if (!placeholderIconImagePromise) {
+        placeholderIconImagePromise = loadImage('icons/add_screenshot_placeholder.svg');
+    }
+    return placeholderIconImagePromise;
+}
 
 /**
  * Creates and adds an "Upload an Image" placeholder to a mockup group.
@@ -65,12 +96,12 @@ async function createAndAddPlaceholder(group, frameData, scale) {
         height: screenRect.height,
     });
 
-    const iconImg = await loadImage('icons/add_screenshot_placeholder.svg');
+    const iconImg = await getPlaceholderIconImage();
     const icon = new Konva.Image({
-    image: iconImg,
-    width: 60, 
-    height: 60,
-});
+        image: iconImg,
+        width: 60,
+        height: 60,
+    });
 
     const placeholderText = new Konva.Text({
         text: 'Add a Screenshot',
@@ -91,22 +122,17 @@ async function createAndAddPlaceholder(group, frameData, scale) {
 
     placeholderGroup.on('click tap', (e) => {
         e.cancelBubble = true;
-        AppState.setCurrentSelectedMockup(group);
-        tr.nodes([group]);
-        group.moveToTop();
-        tr.moveToTop();
-        UI.deleteBtn.disabled = false;
-        UI.downloadFrameBtn.disabled = false;
-        UI.updateFrameBtn.disabled = false;
-        layer.batchDraw();
+        selectMockupGroup(group);
         UI.fileInput.click();
     });
-    }
+}
 
 // ==========================================================================
 // DELETE MOCKUP - deleteSelectedMockup()
 // ==========================================================================
 async function deleteSelectedMockup() {
+    if (!tr || !layer) return;
+
     const selected = tr.nodes()[0];
     if (!selected) return;
 
@@ -118,37 +144,33 @@ async function deleteSelectedMockup() {
         const frameId = selected.getAttr('frameId');
         const frameData = frames.find(f => f.id === frameId);
         const frameNode = selected.getChildren(node => node.getClassName() === 'Image')[0];
-        const frameImage = frameNode.image();
-        const scale = frameNode.width() / frameImage.width;
+        const frameImage = frameNode?.image();
+        const scale = frameNode && frameImage ? frameNode.width() / frameImage.width : 0;
 
-        await createAndAddPlaceholder(selected, frameData, scale);
-        frameNode.moveToTop();
+        if (frameData && frameNode && frameImage) {
+            await createAndAddPlaceholder(selected, frameData, scale);
+            frameNode.moveToTop();
+        }
         layer.batchDraw();
-    } else {
-        const idx = mockups.indexOf(selected);
-        if (idx !== -1) mockups.splice(idx, 1);
-
-        selected.destroy();
-        tr.nodes([]);
-        AppState.setCurrentSelectedMockup(null);
-
-        UI.deleteBtn.disabled = true;
-        UI.downloadFrameBtn.disabled = true;
-        UI.updateFrameBtn.disabled = true;
-        layer.batchDraw();
+        return;
     }
-    }
+
+    selected.destroy();
+    clearSelection();
+}
 
 // ==========================================================================
 // ADD MOCKUP - addMockup()
 // ==========================================================================
 export async function addMockup() {
+    if (!stage || !layer || !tr) return null;
+
     const frameData = frames.find(f => f.id === UI.frameSelect.value);
-    if (!frameData) return;
+    if (!frameData) return null;
 
     /* Calculate a dynamic size for the new frame to fit nicely on the canvas */
     const maxCanvasHeight = initialStageHeight * 0.8;
-    const maxOriginalHeight = Math.max(...frames.map(f => f.originalHeight || 0));
+    const maxOriginalHeight = Math.max(...frames.map(f => f.originalHeight || 0), 1);
     const desiredHeight = (frameData.originalHeight / maxOriginalHeight) * maxCanvasHeight;
 
     const frameImg = await loadImage(frameData.src);
@@ -179,29 +201,18 @@ export async function addMockup() {
         y: stage.height() / 2 - frameHeight / 2,
     });
 
-    const selectGroup = () => {
-        AppState.setCurrentSelectedMockup(group);
-        tr.nodes([group]);
-        group.moveToTop();
-        tr.moveToTop();
-        UI.deleteBtn.disabled = false;
-        UI.downloadFrameBtn.disabled = false;
-        UI.updateFrameBtn.disabled = false;
-        layer.batchDraw();
-    };
-
     group.on('click', (e) => {
         e.cancelBubble = true;
-        selectGroup();
+        selectMockupGroup(group);
     });
 
     layer.add(group);
-    mockups.push(group);
     lastAddedMockup = group;
 
-    selectGroup();
+    selectMockupGroup(group);
     layer.batchDraw();
-    }
+    return group;
+}
 
 // ==========================================================================
 // KONVA INITIALIZATION - initKonva()
@@ -242,12 +253,7 @@ export function initKonva() {
     /* Stage-level event listeners */
     stage.on('click', (e) => {
         if (e.target === stage) {
-        AppState.setCurrentSelectedMockup(null);
-        tr.nodes([]);
-        UI.deleteBtn.disabled = true;
-        UI.downloadFrameBtn.disabled = true;
-        UI.updateFrameBtn.disabled = true;
-        layer.batchDraw();
+            clearSelection();
         }
     });
 
@@ -260,9 +266,10 @@ export function initKonva() {
     UI.deleteBtn.addEventListener('click', deleteSelectedMockup);
 
     window.addEventListener('keydown', (e) => {
-        if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+        if (EDITABLE_TAGS.includes(document.activeElement?.tagName)) return;
         if (['Delete', 'Backspace'].includes(e.key)) {
-        deleteSelectedMockup();
+            e.preventDefault();
+            deleteSelectedMockup();
         }
     });
 }
@@ -271,10 +278,10 @@ export function initKonva() {
 // KONVA RESIZE - resizeKonvaStage()
 // ==========================================================================
 export function resizeKonvaStage() {
-    if (stage) {
+    if (stage && backgroundRect && layer) {
         stage.size({
-        width: UI.mockupArea.offsetWidth,
-        height: UI.mockupArea.offsetHeight
+            width: UI.mockupArea.offsetWidth,
+            height: UI.mockupArea.offsetHeight
         });
         backgroundRect.size(stage.size());
         layer.batchDraw();

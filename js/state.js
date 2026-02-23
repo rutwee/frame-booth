@@ -75,7 +75,7 @@ const iPhone16ProData = {
 };
 
 const iPhone16ProMaxData = {
-    group: "iPhone 16 Pro Max  ",
+    group: "iPhone 16 Pro Max",
     originalWidth: 1470,
     originalHeight: 3000,
     screen: {
@@ -144,12 +144,8 @@ export const frames = [
 //  APPLICATION STATE
 // ==========================================================================
 export const AppState = {
-    photoImg: null,
     currentSelectedMockup: null,
 
-    setPhotoImg(img) {
-        this.photoImg = img;
-    },
     setCurrentSelectedMockup(mockup) {
         this.currentSelectedMockup = mockup;
     }
