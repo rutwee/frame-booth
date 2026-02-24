@@ -9,6 +9,10 @@ import { initKonva, addMockup, lastAddedMockup, tr } from './konvaSetup.js';
 import { initExport } from './export.js';
 
 const SCREENSHOT_PROFILE_MATCH_TOLERANCE = 0.035;
+const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
+const MAX_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 4;
 
 const IPHONE_SCREENSHOT_PROFILES = [
     {
@@ -136,6 +140,14 @@ function calculateScreenshotPlacement(img, screenContainer, targetIslandRect, so
     return { x, y, width, height };
 }
 
+function isTypingInFormField() {
+    return EDITABLE_TAGS.includes(document.activeElement?.tagName);
+}
+
+function clampZoom(value) {
+    return clamp(value, MIN_ZOOM, MAX_ZOOM);
+}
+
 // ==========================================================================
 // INITIALIZATION - initializeApp()
 // ==========================================================================
@@ -173,7 +185,11 @@ async function initializeApp() {
     initZoomPanControls();
 
     // --- Add the default frame ---
-    await addMockup();
+    try {
+        await addMockup();
+    } catch (error) {
+        console.error('Failed to load default frame:', error);
+    }
 
     // --- Bind event listeners ---
     UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
@@ -197,6 +213,7 @@ window.addEventListener('DOMContentLoaded', initializeApp);
 function initZoomPanControls() {
     const previewWrap = document.querySelector('.preview-wrap');
     const mockupArea = UI.mockupArea;
+    if (!previewWrap || !mockupArea) return;
 
     let scale = 1;
     let panX = 0;
@@ -223,7 +240,7 @@ function initZoomPanControls() {
             const direction = e.deltaY < 0 ? 1 : -1;
             const newScale = direction > 0 ? scale * zoomFactor : scale / zoomFactor;
             const oldScale = scale;
-            scale = Math.max(0.1, Math.min(4, newScale));
+            scale = clampZoom(newScale);
 
             panX -= (mouseX - panX) * (scale / oldScale - 1);
             panY -= (mouseY - panY) * (scale / oldScale - 1);
@@ -236,7 +253,7 @@ function initZoomPanControls() {
     }, { passive: false });
 
     window.addEventListener('keydown', e => {
-        if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+        if (isTypingInFormField()) return;
         if (e.key === ' ' && !isSpaceDown) {
             e.preventDefault();
             isSpaceDown = true;
@@ -283,7 +300,7 @@ function initZoomPanControls() {
     });
 
 
-previewWrap.addEventListener('touchstart', e => {
+    previewWrap.addEventListener('touchstart', e => {
         if (e.target.closest('.toolbar')) {
             return;
         }
@@ -291,7 +308,8 @@ previewWrap.addEventListener('touchstart', e => {
         e.preventDefault();
 
         if (e.touches.length === 1) {
-            const stage = Konva.stages[0];
+            const stage = Konva.stages?.[0];
+            if (!stage) return;
             const touch = e.touches[0];
             
             const stageBox = stage.container().getBoundingClientRect();
@@ -317,7 +335,6 @@ previewWrap.addEventListener('touchstart', e => {
             panStart.y = e.touches[0].clientY - panY;
             
         } else if (e.touches.length === 2) {
-
             isPanningWithTouch = false;
             lastDist = Math.hypot(
                 e.touches[0].pageX - e.touches[1].pageX,
@@ -330,16 +347,17 @@ previewWrap.addEventListener('touchstart', e => {
         }
     }, { passive: false });
 
-previewWrap.addEventListener('touchmove', e => {
-    if (isPanningWithTouch && e.touches.length === 1) {
-        // One-finger pan move
-        e.preventDefault();
-        panX = e.touches[0].clientX - panStart.x;
-        panY = e.touches[0].clientY - panStart.y;
-        applyTransform();
+    previewWrap.addEventListener('touchmove', e => {
+        if (isPanningWithTouch && e.touches.length === 1) {
+            e.preventDefault();
+            panX = e.touches[0].clientX - panStart.x;
+            panY = e.touches[0].clientY - panStart.y;
+            applyTransform();
+            return;
+        }
 
-    } else if (e.touches.length === 2) {
-        // Two-finger zoom/pan move
+        if (e.touches.length !== 2) return;
+
         e.preventDefault();
         isPanningWithTouch = false;
 
@@ -352,43 +370,41 @@ previewWrap.addEventListener('touchmove', e => {
             y: (e.touches[0].pageY + e.touches[1].pageY) / 2
         };
 
-        // Calculate zoom
+        if (!lastCenter || lastDist <= 0) {
+            lastCenter = newCenter;
+            lastDist = newDist;
+            return;
+        }
+
         const scaleFactor = newDist / lastDist;
         const oldScale = scale;
-        scale = Math.max(0.1, Math.min(4, scale * scaleFactor));
+        scale = clampZoom(scale * scaleFactor);
 
-        // zoom origin
         const rect = mockupArea.getBoundingClientRect();
-        const mouseX = lastCenter.x - rect.left;
-        const mouseY = lastCenter.y - rect.top;
+        const zoomOriginX = lastCenter.x - rect.left;
+        const zoomOriginY = lastCenter.y - rect.top;
 
-        // Apply zoom
-        panX -= (mouseX - panX) * (scale / oldScale - 1);
-        panY -= (mouseY - panY) * (scale / oldScale - 1);
+        panX -= (zoomOriginX - panX) * (scale / oldScale - 1);
+        panY -= (zoomOriginY - panY) * (scale / oldScale - 1);
 
-        // Calculate pan
         panX += newCenter.x - lastCenter.x;
         panY += newCenter.y - lastCenter.y;
 
         applyTransform();
-
-        // Update for next move
         lastDist = newDist;
         lastCenter = newCenter;
-    }
-}, { passive: false });
+    }, { passive: false });
 
-previewWrap.addEventListener('touchend', e => {
-    isPanningWithTouch = false;
+    previewWrap.addEventListener('touchend', e => {
+        isPanningWithTouch = false;
 
-    if (e.touches.length < 2) {
-        lastDist = 0;
-        lastCenter = null;
-    }
-});
+        if (e.touches.length < 2) {
+            lastDist = 0;
+            lastCenter = null;
+        }
+    });
 
-
-applyTransform();
+    applyTransform();
 }
 
 
@@ -483,13 +499,8 @@ async function handleFrameSwap() {
         }
     }
 
-    const layer = oldMockup.getLayer();
-
-    oldMockup.destroy();
-    tr.nodes([]);
-
-    await addMockup();
-    const newMockup = lastAddedMockup;
+    const newMockup = await addMockup();
+    if (!newMockup) return;
 
     newMockup.x(oldTransform.x);
     newMockup.y(oldTransform.y);
@@ -501,24 +512,41 @@ async function handleFrameSwap() {
         placeImageInMockup(imageToReapply, newMockup);
     }
 
+    oldMockup.destroy();
     AppState.setCurrentSelectedMockup(newMockup);
-    tr.nodes([newMockup]);
-
-    layer.batchDraw();
+    tr?.nodes([newMockup]);
+    newMockup.getLayer()?.batchDraw();
 }
 
 // ==========================================================================
 // IMAGE UPLOAD - handleImageUpload()
 // ==========================================================================
+function getImageValidationError(file) {
+    if (!file.type.startsWith('image/')) {
+        return 'Please select a valid image file.';
+    }
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+        return 'Image file is too large! Please upload a file under 8MB.';
+    }
+    return null;
+}
+
 async function handleImageUpload(e) {
     const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return alert('Please select a valid image file.');
-    if (file.size > 8 * 1024 * 1024) return alert('Image file is too large! Please upload a file under 8MB.');
+    if (!file) {
+        UI.fileInput.value = "";
+        return;
+    }
+
     try {
+        const validationError = getImageValidationError(file);
+        if (validationError) {
+            alert(validationError);
+            return;
+        }
+
         const dataURL = await Helpers.readFileAsDataURL(file);
         const img = await Helpers.loadImage(dataURL);
-        AppState.setPhotoImg(img);
 
         const targetMockup = AppState.currentSelectedMockup || lastAddedMockup;
         if (targetMockup) {
