@@ -5,8 +5,8 @@
 import * as UI from './ui.js';
 import * as Helpers from './helpers.js';
 import { AppState, frames } from './state.js';
-import { initKonva, addMockup, lastAddedMockup, tr } from './konvaSetup.js';
-import { initExport } from './export.js';
+import { initKonva, addMockup, lastAddedMockup, tr, updateKonvaCanvasBackground } from './konvaSetup.js';
+import { initExport, updateDownloadSceneButtonState } from './export.js';
 
 const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MAX_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
@@ -19,6 +19,17 @@ function isTypingInFormField() {
 
 function clampZoom(value) {
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
+}
+
+function applyCanvasMode() {
+    const enabled = !!UI.canvasEnabled?.checked;
+    UI.canvasSettingsPanel?.classList.toggle('is-disabled', !enabled);
+    UI.docWidth.disabled = !enabled;
+    UI.docHeight.disabled = !enabled;
+    UI.bgColor.disabled = !enabled;
+    Helpers.updateMockupBackground();
+    updateKonvaCanvasBackground();
+    updateDownloadSceneButtonState();
 }
 
 // ==========================================================================
@@ -48,13 +59,17 @@ async function initializeApp() {
         UI.docWidth.value = 350; 
         UI.docHeight.value = 600;
     }
+    if (UI.canvasEnabled) {
+        UI.canvasEnabled.checked = false;
+    }
 
-    Helpers.updateMockupBackground();
     Helpers.resizeDocument();
 
     // --- Initialize modules ---
     initKonva();
+    applyCanvasMode();
     initExport();
+    window.addEventListener('frames-changed', updateDownloadSceneButtonState);
     initZoomPanControls();
 
     // --- Add the default frame ---
@@ -68,6 +83,7 @@ async function initializeApp() {
     UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
     UI.docWidth.addEventListener('input', Helpers.resizeDocument);
     UI.docHeight.addEventListener('input', Helpers.resizeDocument);
+    UI.canvasEnabled?.addEventListener('change', applyCanvasMode);
     UI.uploadBtn.addEventListener('click', () => UI.fileInput.click());
     UI.fileInput.addEventListener('change', handleImageUpload);
     UI.addFrameBtn.addEventListener('click', addMockup);
@@ -390,6 +406,7 @@ async function handleFrameSwap() {
     AppState.setCurrentSelectedMockup(newMockup);
     tr?.nodes([newMockup]);
     newMockup.getLayer()?.batchDraw();
+    updateDownloadSceneButtonState();
 }
 
 // ==========================================================================
