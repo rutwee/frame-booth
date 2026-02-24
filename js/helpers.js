@@ -1,7 +1,7 @@
 // ==================================================================
 //    HELPER UTILITIES
 // ==================================================================
-import { mockupArea, bgColor, docWidth, docHeight } from './ui.js';
+import { mockupArea, bgColor, docWidth, docHeight, canvasEnabled } from './ui.js';
 import { resizeKonvaStage } from './konvaSetup.js';
 
 /**
@@ -28,8 +28,14 @@ export const readFileAsDataURL = file => new Promise((resolve, reject) => {
     reader.readAsDataURL(file);
 });
 
+export function isCanvasEnabled() {
+    return !!canvasEnabled?.checked;
+}
+
 export function updateMockupBackground() {
-    mockupArea.style.backgroundColor = bgColor.value || "#ffffff";
+    const enabled = isCanvasEnabled();
+    mockupArea.classList.toggle('canvas-disabled', !enabled);
+    mockupArea.style.backgroundColor = enabled ? (bgColor.value || "#ffffff") : 'transparent';
 }
 
 export function resizeDocument() {

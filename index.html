@@ -74,20 +74,26 @@
 
     <div class="toolbar-group">
       <label>Canvas Settings</label>
-      <div class="input-row">
-        <div class="input-group small">
-          <label for="docWidth">Width</label>
-          <input type="number" id="docWidth" min="200" value="900">
-        </div>
-        <div class="input-group small">
-          <label for="docHeight">Height</label>
-          <input type="number" id="docHeight" min="400" value="600">
-        </div>
+      <div class="canvas-toggle-row">
+        <input type="checkbox" id="canvasEnabled">
+        <label for="canvasEnabled">Enable Canvas</label>
       </div>
-      <div class="input-group color-group">
-        <label for="bgColor">BG Color</label>
-        <div class="color-picker-wrapper">
-          <input type="color" id="bgColor" value="#ffffff">
+      <div id="canvasSettingsPanel" class="canvas-settings-panel">
+        <div class="input-row">
+          <div class="input-group small">
+            <label for="docWidth">Width</label>
+            <input type="number" id="docWidth" min="200" value="900">
+          </div>
+          <div class="input-group small">
+            <label for="docHeight">Height</label>
+            <input type="number" id="docHeight" min="400" value="600">
+          </div>
+        </div>
+        <div class="input-group color-group">
+          <label for="bgColor">BG Color</label>
+          <div class="color-picker-wrapper">
+            <input type="color" id="bgColor" value="#ffffff">
+          </div>
         </div>
       </div>
     </div>

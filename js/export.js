@@ -1,29 +1,30 @@
 // ==========================================================================
 // EXPORT FUNCTIONALITY
 // ==========================================================================
-import { downloadBtn, downloadFrameBtn } from './ui.js';
+import { downloadBtn, downloadFrameBtn, canvasEnabled } from './ui.js';
+import {
+    collectMockupNodes,
+    getSceneExportCropBounds,
+    shouldEnableSceneDownload,
+} from './sceneUtils.js';
+
 const SCENE_EXPORT_PIXEL_RATIO = 4;
 const FRAME_EXPORT_SIZE = 1500;
 
 // ==========================================================================
-//  HELPER FUNCTIONS
+// HELPERS
 // ==========================================================================
-/**
- * A utility to trigger a browser download for a given data URI.
- * @param {string} uri The data URI (e.g., from canvas.toDataURL()) to download.
- * @param {string} name The desired filename for the downloaded file.
- */
+function isCanvasModeEnabled() {
+    return !!canvasEnabled?.checked;
+}
 
-// ==========================================================================
-// DOWNLOAD URI - downloadURI()
-// ==========================================================================
 function downloadURI(uri, name) {
     const link = document.createElement('a');
     link.download = name;
     link.href = uri;
-    document.body.appendChild(link); // Required for Firefox
+    document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link); // Clean up the link element
+    document.body.removeChild(link);
 }
 
 function getStage() {
@@ -34,48 +35,76 @@ function getPrimaryLayer(stage) {
     return stage?.findOne('Layer') ?? null;
 }
 
-// ==========================================================================
-//  INITIALIZATION
-// ==========================================================================
+function withTransformerHidden(stage, work) {
+    const transformer = stage.findOne('Transformer');
+    const layer = getPrimaryLayer(stage);
+    const previousNodes = transformer?.nodes() ?? [];
+
+    transformer?.nodes([]);
+    layer?.batchDraw();
+
+    const restore = () => {
+        transformer?.nodes(previousNodes);
+        layer?.batchDraw();
+    };
+
+    try {
+        work(restore);
+    } catch (error) {
+        restore();
+        throw error;
+    }
+}
+
+function getSceneExportOptions(stage) {
+    const nodes = collectMockupNodes(stage);
+    const canvasEnabledNow = isCanvasModeEnabled();
+    const canExport = shouldEnableSceneDownload(canvasEnabledNow, nodes.length);
+    if (!canExport) return null;
+
+    const cropBounds = getSceneExportCropBounds(canvasEnabledNow, nodes);
+    if (!canvasEnabledNow && !cropBounds) return null;
+
+    return {
+        ...(cropBounds || {}),
+        pixelRatio: SCENE_EXPORT_PIXEL_RATIO,
+        mimeType: 'image/png',
+    };
+}
+
+export function updateDownloadSceneButtonState() {
+    const stage = getStage();
+    const frameCount = collectMockupNodes(stage).length;
+    downloadBtn.disabled = !shouldEnableSceneDownload(isCanvasModeEnabled(), frameCount);
+}
 
 // ==========================================================================
 // EXPORT BUTTON - initExport()
 // ==========================================================================
 export function initExport() {
-
-    // --- EXPORT ENTIRE SCENE ---
     downloadBtn.addEventListener('click', () => {
         const stage = getStage();
         if (!stage) return;
 
-        const tr = stage.findOne('Transformer');
-        if (!tr) return;
-
-        const layer = getPrimaryLayer(stage);
-        const oldNodes = tr.nodes(); 
-
-        tr.nodes([]);
-        layer?.batchDraw();
+        const exportOptions = getSceneExportOptions(stage);
+        if (!exportOptions) return;
 
         try {
-            stage.toDataURL({
-                pixelRatio: SCENE_EXPORT_PIXEL_RATIO,
-                mimeType: 'image/png',
-                callback(dataURL) {
-                    downloadURI(dataURL, 'scene.png');
-                    tr.nodes(oldNodes);
-                    layer?.batchDraw();
-                }
+            withTransformerHidden(stage, restore => {
+                stage.toDataURL({
+                    ...exportOptions,
+                    callback(dataURL) {
+                        downloadURI(dataURL, 'scene.png');
+                        restore();
+                    },
+                });
             });
         } catch (error) {
             console.error('Scene export failed:', error);
             alert('Sorry, scene export failed. Please try again.');
-            tr.nodes(oldNodes);
-            layer?.batchDraw();
         }
     });
 
-    // --- EXPORT SELECTED FRAME ONLY ---
     downloadFrameBtn.addEventListener('click', () => {
         const stage = getStage();
         if (!stage) return;
@@ -96,6 +125,7 @@ export function initExport() {
                 width: FRAME_EXPORT_SIZE,
                 height: FRAME_EXPORT_SIZE,
             });
+
             const tempLayer = new Konva.Layer();
             tempStage.add(tempLayer);
 
@@ -125,4 +155,7 @@ export function initExport() {
             tempContainer.remove();
         }
     });
+
+    updateDownloadSceneButtonState();
 }
+
