@@ -155,6 +155,7 @@ function applyCanvasMode() {
     UI.docWidth.disabled = !enabled;
     UI.docHeight.disabled = !enabled;
     UI.bgColor.disabled = !enabled;
+    Helpers.resizeDocument();
     Helpers.updateMockupBackground();
     updateKonvaCanvasBackground();
     updateDownloadSceneButtonState();
@@ -702,4 +703,7 @@ function renderBackground() {
     ctx.globalAlpha = 1;
 }
 
-window.addEventListener('resize', () => requestAnimationFrame(renderBackground));
+window.addEventListener('resize', () => requestAnimationFrame(() => {
+    Helpers.resizeDocument();
+    renderBackground();
+}));
