@@ -189,7 +189,7 @@ async function createAndAddPlaceholder(group, frameData, scale) {
   placeholderGroup.add(clickableArea, icon, placeholderText);
   group.add(placeholderGroup);
 
-  placeholderGroup.on("click tap", (e) => {
+  placeholderGroup.on("dblclick dbltap", (e) => {
     e.cancelBubble = true;
     selectMockupGroup(group);
     UI.fileInput.click();
