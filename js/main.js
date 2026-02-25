@@ -150,15 +150,38 @@ function clampZoom(value) {
 }
 
 function applyCanvasMode() {
+    const stage = Konva.stages?.[0];
+    const previousStageWidth = stage?.width() || 0;
+    const previousStageHeight = stage?.height() || 0;
     const enabled = !!UI.canvasEnabled?.checked;
     UI.canvasSettingsPanel?.classList.toggle('is-disabled', !enabled);
     UI.docWidth.disabled = !enabled;
     UI.docHeight.disabled = !enabled;
     UI.bgColor.disabled = !enabled;
     Helpers.resizeDocument();
+    offsetMockupsForStageResize(previousStageWidth, previousStageHeight);
     Helpers.updateMockupBackground();
     updateKonvaCanvasBackground();
     updateDownloadSceneButtonState();
+}
+
+function offsetMockupsForStageResize(previousStageWidth, previousStageHeight) {
+    const stage = Konva.stages?.[0];
+    if (!stage?.find || !previousStageWidth || !previousStageHeight) return;
+
+    const dx = (stage.width() - previousStageWidth) / 2;
+    const dy = (stage.height() - previousStageHeight) / 2;
+    if (!dx && !dy) return;
+
+    const found = stage.find('.mockup-group');
+    const groups = typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
+    if (!groups.length) return;
+
+    for (const group of groups) {
+        group.x(group.x() + dx);
+        group.y(group.y() + dy);
+    }
+    groups[0].getLayer()?.batchDraw();
 }
 
 function createMockupSnapshot(mockup) {
@@ -704,6 +727,10 @@ function renderBackground() {
 }
 
 window.addEventListener('resize', () => requestAnimationFrame(() => {
+    const stage = Konva.stages?.[0];
+    const previousStageWidth = stage?.width() || 0;
+    const previousStageHeight = stage?.height() || 0;
     Helpers.resizeDocument();
+    offsetMockupsForStageResize(previousStageWidth, previousStageHeight);
     renderBackground();
 }));
