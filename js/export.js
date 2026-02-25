@@ -1,15 +1,20 @@
 // ==========================================================================
 // EXPORT FUNCTIONALITY
 // ==========================================================================
-import { downloadBtn, downloadFrameBtn, canvasEnabled } from './ui.js';
+import {
+    downloadBtn,
+    downloadFrameBtn,
+    canvasEnabled,
+} from './ui.js';
 import {
     collectMockupNodes,
     getSceneExportCropBounds,
     shouldEnableSceneDownload,
 } from './sceneUtils.js';
 
-const SCENE_EXPORT_PIXEL_RATIO = 4;
-const FRAME_EXPORT_SIZE = 1500;
+const SCENE_EXPORT_PIXEL_RATIO = 3.6;
+const FRAME_EXPORT_MAX_SCALE = 7;
+const FRAME_EXPORT_MAX_DIMENSION = 5400;
 
 // ==========================================================================
 // HELPERS
@@ -72,6 +77,45 @@ function getSceneExportOptions(stage) {
     };
 }
 
+function getImagePixelSize(image) {
+    if (!image) return { width: 0, height: 0 };
+    return {
+        width: image.naturalWidth || image.videoWidth || image.width || 0,
+        height: image.naturalHeight || image.videoHeight || image.height || 0,
+    };
+}
+
+function getBestFrameExportScale(selectedNode) {
+    let bestScale = 1;
+
+    const frameNode = selectedNode.getChildren((n) => n.getClassName() === 'Image')[0];
+    const framePixels = getImagePixelSize(frameNode?.image?.());
+    if (frameNode?.width?.() > 0 && frameNode?.height?.() > 0 && framePixels.width > 0 && framePixels.height > 0) {
+        bestScale = Math.max(
+            bestScale,
+            framePixels.width / frameNode.width(),
+            framePixels.height / frameNode.height(),
+        );
+    }
+
+    const screenshotNode = selectedNode.findOne('.screenshot');
+    const screenshotPixels = getImagePixelSize(screenshotNode?.image?.());
+    if (
+        screenshotNode?.width?.() > 0 &&
+        screenshotNode?.height?.() > 0 &&
+        screenshotPixels.width > 0 &&
+        screenshotPixels.height > 0
+    ) {
+        bestScale = Math.max(
+            bestScale,
+            screenshotPixels.width / screenshotNode.width(),
+            screenshotPixels.height / screenshotNode.height(),
+        );
+    }
+
+    return Math.min(FRAME_EXPORT_MAX_SCALE, Math.max(1, bestScale));
+}
+
 export function updateDownloadSceneButtonState() {
     const stage = getStage();
     const frameCount = collectMockupNodes(stage).length;
@@ -122,8 +166,8 @@ export function initExport() {
         try {
             tempStage = new Konva.Stage({
                 container: tempContainer,
-                width: FRAME_EXPORT_SIZE,
-                height: FRAME_EXPORT_SIZE,
+                width: 1,
+                height: 1,
             });
 
             const tempLayer = new Konva.Layer();
@@ -135,12 +179,20 @@ export function initExport() {
             clone.scale({ x: 1, y: 1 });
 
             const originalSize = clone.getClientRect({ skipTransform: true });
-            const maxDimension = Math.max(originalSize.width, originalSize.height, 1);
-            const scale = FRAME_EXPORT_SIZE / maxDimension;
-            const newWidth = Math.max(1, originalSize.width * scale);
-            const newHeight = Math.max(1, originalSize.height * scale);
+            const baseWidth = Math.max(1, Math.ceil(originalSize.width));
+            const baseHeight = Math.max(1, Math.ceil(originalSize.height));
+            const baseMaxDim = Math.max(baseWidth, baseHeight);
+            const targetScale = getBestFrameExportScale(selectedNode);
+            const maxAllowedScale = FRAME_EXPORT_MAX_DIMENSION / baseMaxDim;
+            const scale = Math.max(1, Math.min(targetScale, maxAllowedScale));
+            const exportWidth = Math.max(1, Math.round(baseWidth * scale));
+            const exportHeight = Math.max(1, Math.round(baseHeight * scale));
 
-            tempStage.size({ width: newWidth, height: newHeight });
+            tempStage.size({ width: exportWidth, height: exportHeight });
+            clone.position({
+                x: Math.round((-originalSize.x) * scale),
+                y: Math.round((-originalSize.y) * scale),
+            });
             clone.scale({ x: scale, y: scale });
             tempLayer.add(clone);
             tempLayer.draw();
@@ -158,4 +210,3 @@ export function initExport() {
 
     updateDownloadSceneButtonState();
 }
-
