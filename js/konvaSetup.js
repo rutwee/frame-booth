@@ -16,6 +16,55 @@ let initialStageHeight;
 let placeholderIconImagePromise;
 
 const EDITABLE_TAGS = ["INPUT", "SELECT", "TEXTAREA"];
+const AUTO_LAYOUT_MARGIN = 24;
+const AUTO_LAYOUT_GAP = 24;
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getCenteredPosition(frameWidth, frameHeight) {
+  return {
+    x: stage.width() / 2 - frameWidth / 2,
+    y: stage.height() / 2 - frameHeight / 2,
+  };
+}
+
+function getAutoPlacement(frameWidth, frameHeight) {
+  if (!stage?.find) return getCenteredPosition(frameWidth, frameHeight);
+
+  const found = stage.find(".mockup-group");
+  const groups =
+    typeof found?.toArray === "function" ? found.toArray() : Array.from(found || []);
+  if (!groups.length) return getCenteredPosition(frameWidth, frameHeight);
+
+  const anchor =
+    lastAddedMockup?.getStage?.() === stage
+      ? lastAddedMockup
+      : groups[groups.length - 1];
+  const rect = anchor?.getClientRect?.();
+  if (!rect) return getCenteredPosition(frameWidth, frameHeight);
+
+  const stageWidth = stage.width();
+  const stageHeight = stage.height();
+  let x = rect.x + rect.width + AUTO_LAYOUT_GAP;
+  let y = rect.y;
+
+  if (x + frameWidth > stageWidth - AUTO_LAYOUT_MARGIN) {
+    x = AUTO_LAYOUT_MARGIN;
+    y = rect.y + rect.height + AUTO_LAYOUT_GAP;
+  }
+
+  const minX = AUTO_LAYOUT_MARGIN;
+  const minY = AUTO_LAYOUT_MARGIN;
+  const maxX = Math.max(minX, stageWidth - frameWidth - AUTO_LAYOUT_MARGIN);
+  const maxY = Math.max(minY, stageHeight - frameHeight - AUTO_LAYOUT_MARGIN);
+
+  return {
+    x: clamp(x, minX, maxX),
+    y: clamp(y, minY, maxY),
+  };
+}
 
 function setSelectionButtonsDisabled(disabled) {
   UI.deleteBtn.disabled = disabled;
@@ -140,7 +189,7 @@ async function createAndAddPlaceholder(group, frameData, scale) {
   placeholderGroup.add(clickableArea, icon, placeholderText);
   group.add(placeholderGroup);
 
-  placeholderGroup.on("click tap", (e) => {
+  placeholderGroup.on("dblclick dbltap", (e) => {
     e.cancelBubble = true;
     selectMockupGroup(group);
     UI.fileInput.click();
@@ -221,11 +270,7 @@ export async function addMockup() {
   await createAndAddPlaceholder(group, frameData, scale);
   group.add(frameNode);
 
-  /* Center the new mockup on the stage */
-  group.position({
-    x: stage.width() / 2 - frameWidth / 2,
-    y: stage.height() / 2 - frameHeight / 2,
-  });
+  group.position(getAutoPlacement(frameWidth, frameHeight));
 
   group.on("click", (e) => {
     e.cancelBubble = true;
