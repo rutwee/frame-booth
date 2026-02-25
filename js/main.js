@@ -198,6 +198,7 @@ async function initializeApp() {
     initExport();
     window.addEventListener('frames-changed', updateDownloadSceneButtonState);
     initZoomPanControls();
+    initDragAndDropUpload();
 
     // --- Add the default frame ---
     try {
@@ -556,27 +557,76 @@ async function handleImageUpload(e) {
     }
 
     try {
-        const validationError = getImageValidationError(file);
-        if (validationError) {
-            alert(validationError);
-            return;
-        }
-
-        const dataURL = await Helpers.readFileAsDataURL(file);
-        const img = await Helpers.loadImage(dataURL);
-
         const targetMockup = AppState.currentSelectedMockup || lastAddedMockup;
-        if (targetMockup) {
-            placeImageInMockup(img, targetMockup);
-        } else {
-            alert("Please add or select a frame to place the image in.");
-        }
+        await loadAndPlaceImage(file, targetMockup);
     } catch (error) {
         console.error("Error processing image:", error);
         alert("Sorry, there was an error processing your image.");
     } finally {
         UI.fileInput.value = "";
     }
+}
+
+async function loadAndPlaceImage(file, targetMockup) {
+    const validationError = getImageValidationError(file);
+    if (validationError) {
+        alert(validationError);
+        return;
+    }
+    if (!targetMockup) {
+        alert("Please add or select a frame to place the image in.");
+        return;
+    }
+    const dataURL = await Helpers.readFileAsDataURL(file);
+    const img = await Helpers.loadImage(dataURL);
+    placeImageInMockup(img, targetMockup);
+}
+
+function getMockupAtClientPoint(clientX, clientY) {
+    const stage = Konva.stages?.[0];
+    if (!stage) return null;
+
+    const stageBox = stage.container().getBoundingClientRect();
+    const scaleX = stageBox.width / stage.width() || 1;
+    const scaleY = stageBox.height / stage.height() || 1;
+    const point = {
+        x: (clientX - stageBox.left) / scaleX,
+        y: (clientY - stageBox.top) / scaleY,
+    };
+    const shape = stage.getIntersection(point);
+    const directMockup = shape?.findAncestor?.('.mockup-group');
+    if (directMockup) return directMockup;
+
+    const found = stage.find('.mockup-group');
+    const groups = typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
+    for (let i = groups.length - 1; i >= 0; i -= 1) {
+        const r = groups[i].getClientRect();
+        if (point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height) {
+            return groups[i];
+        }
+    }
+    return null;
+}
+
+function initDragAndDropUpload() {
+    UI.mockupArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    });
+
+    UI.mockupArea.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        const file = Array.from(e.dataTransfer?.files || []).find((f) => f.type.startsWith('image/'));
+        if (!file) return;
+        const targetMockup = getMockupAtClientPoint(e.clientX, e.clientY);
+        if (!targetMockup) return;
+        try {
+            await loadAndPlaceImage(file, targetMockup);
+        } catch (error) {
+            console.error("Error processing dropped image:", error);
+            alert("Sorry, there was an error processing your image.");
+        }
+    });
 }
 
 // ==========================================================================
