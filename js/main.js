@@ -13,6 +13,7 @@ const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MAX_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
+let copiedMockupSnapshot = null;
 
 const IPHONE_SCREENSHOT_PROFILES = [
     {
@@ -159,6 +160,66 @@ function applyCanvasMode() {
     updateDownloadSceneButtonState();
 }
 
+function createMockupSnapshot(mockup) {
+    if (!mockup) return null;
+    return {
+        frameId: mockup.getAttr('frameId'),
+        x: mockup.x(),
+        y: mockup.y(),
+        scaleX: mockup.scaleX(),
+        scaleY: mockup.scaleY(),
+        rotation: mockup.rotation(),
+        image: mockup.findOne('.screenshot')?.image() || null,
+    };
+}
+
+function applyMockupSnapshot(mockup, snapshot) {
+    if (!mockup || !snapshot) return;
+    mockup.x(snapshot.x);
+    mockup.y(snapshot.y);
+    mockup.scaleX(snapshot.scaleX);
+    mockup.scaleY(snapshot.scaleY);
+    mockup.rotation(snapshot.rotation);
+    if (snapshot.image) placeImageInMockup(snapshot.image, mockup);
+}
+
+async function pasteCopiedMockup() {
+    if (!copiedMockupSnapshot?.frameId) return;
+    const previousFrameId = UI.frameSelect.value;
+    try {
+        UI.frameSelect.value = copiedMockupSnapshot.frameId;
+        const newMockup = await addMockup();
+        if (!newMockup) return;
+        applyMockupSnapshot(newMockup, copiedMockupSnapshot);
+        AppState.setCurrentSelectedMockup(newMockup);
+        tr?.nodes([newMockup]);
+        newMockup.getLayer()?.batchDraw();
+        updateDownloadSceneButtonState();
+    } finally {
+        UI.frameSelect.value = previousFrameId;
+    }
+}
+
+function handleGlobalShortcuts(e) {
+    if (isTypingInFormField() || e.repeat) return;
+    if (!(e.metaKey || e.ctrlKey)) return;
+
+    const key = e.key.toLowerCase();
+    if (key === 'c') {
+        const snapshot = createMockupSnapshot(AppState.currentSelectedMockup);
+        if (!snapshot) return;
+        copiedMockupSnapshot = snapshot;
+        e.preventDefault();
+        return;
+    }
+
+    if (key === 'v') {
+        if (!copiedMockupSnapshot) return;
+        e.preventDefault();
+        pasteCopiedMockup();
+    }
+}
+
 // ==========================================================================
 // INITIALIZATION - initializeApp()
 // ==========================================================================
@@ -216,6 +277,7 @@ async function initializeApp() {
     UI.fileInput.addEventListener('change', handleImageUpload);
     UI.addFrameBtn.addEventListener('click', addMockup);
     UI.updateFrameBtn.addEventListener('click', handleFrameSwap);
+    window.addEventListener('keydown', handleGlobalShortcuts);
 
     // --- Start background rendering ---
     renderBackground();
@@ -498,36 +560,13 @@ async function handleFrameSwap() {
     const oldMockup = AppState.currentSelectedMockup;
     if (!oldMockup) return;
 
-    
-    const oldTransform = {
-        x: oldMockup.x(),
-        y: oldMockup.y(),
-        scaleX: oldMockup.scaleX(),
-        scaleY: oldMockup.scaleY(),
-        rotation: oldMockup.rotation(),
-    };
-
-    let imageToReapply = null;
-    const screenshotContainer = oldMockup.findOne('.screenshot-container');
-    if (screenshotContainer) {
-        const screenshotNode = screenshotContainer.findOne('.screenshot');
-        if (screenshotNode) {
-            imageToReapply = screenshotNode.image(); 
-        }
-    }
+    const oldSnapshot = createMockupSnapshot(oldMockup);
+    if (!oldSnapshot) return;
 
     const newMockup = await addMockup();
     if (!newMockup) return;
 
-    newMockup.x(oldTransform.x);
-    newMockup.y(oldTransform.y);
-    newMockup.scaleX(oldTransform.scaleX);
-    newMockup.scaleY(oldTransform.scaleY);
-    newMockup.rotation(oldTransform.rotation);
-
-    if (imageToReapply) {
-        placeImageInMockup(imageToReapply, newMockup);
-    }
+    applyMockupSnapshot(newMockup, oldSnapshot);
 
     oldMockup.destroy();
     AppState.setCurrentSelectedMockup(newMockup);
