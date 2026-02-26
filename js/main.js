@@ -524,18 +524,10 @@ function initZoomPanControls() {
     previewWrap.addEventListener('wheel', e => {
         e.preventDefault();
         if (e.ctrlKey || e.metaKey) {
-            const rect = mockupArea.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-
             const zoomFactor = 1.01;
             const direction = e.deltaY < 0 ? 1 : -1;
             const newScale = direction > 0 ? scale * zoomFactor : scale / zoomFactor;
-            const oldScale = scale;
             scale = clampZoom(newScale);
-
-            panX -= (mouseX - panX) * (scale / oldScale - 1);
-            panY -= (mouseY - panY) * (scale / oldScale - 1);
         } else {
             const panSpeed = 1;
             panX -= e.deltaX * panSpeed;
