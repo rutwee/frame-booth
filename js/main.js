@@ -20,6 +20,7 @@ let sceneHistory = [];
 let redoHistory = [];
 let initialSceneSnapshot = null;
 let isRestoringHistory = false;
+let resetViewportTransform = null;
 
 const IPHONE_SCREENSHOT_PROFILES = [
     {
@@ -278,6 +279,7 @@ async function handleRedo() {
 
 async function handleResetScene() {
     if (!initialSceneSnapshot) return;
+    resetViewportTransform?.();
     await restoreScene(initialSceneSnapshot);
 }
 
@@ -510,21 +512,22 @@ function initZoomPanControls() {
         mockupArea.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
     }
 
+    function resetTransform() {
+        scale = 1;
+        panX = 0;
+        panY = 0;
+        applyTransform();
+    }
+
+    resetViewportTransform = resetTransform;
+
     previewWrap.addEventListener('wheel', e => {
         e.preventDefault();
         if (e.ctrlKey || e.metaKey) {
-            const rect = mockupArea.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-
             const zoomFactor = 1.01;
             const direction = e.deltaY < 0 ? 1 : -1;
             const newScale = direction > 0 ? scale * zoomFactor : scale / zoomFactor;
-            const oldScale = scale;
             scale = clampZoom(newScale);
-
-            panX -= (mouseX - panX) * (scale / oldScale - 1);
-            panY -= (mouseY - panY) * (scale / oldScale - 1);
         } else {
             const panSpeed = 1;
             panX -= e.deltaX * panSpeed;
@@ -542,10 +545,7 @@ function initZoomPanControls() {
         }
         if (e.key === '0') {
             e.preventDefault();
-            scale = 1;
-            panX = 0;
-            panY = 0;
-            applyTransform();
+            resetTransform();
         }
     });
 
