@@ -213,6 +213,37 @@ body {
   z-index: 25;
 }
 
+.corner-links {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 35;
+}
+
+.corner-icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: linear-gradient(to bottom, #ffffff, #f6f8fc);
+  box-shadow: 0 2px 10px -8px rgba(15, 23, 42, 0.6);
+  display: grid;
+  place-items: center;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.corner-icon-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -10px rgba(15, 23, 42, 0.65);
+}
+
+.corner-icon-btn img {
+  width: 16px;
+  height: 16px;
+}
+
 .toolbar-group {
   display: flex;
   flex-direction: column;
@@ -604,6 +635,12 @@ input[type="color"]::-webkit-color-swatch {
     overflow-y: hidden;
     border-left: none;
     border-top: 1px solid var(--panel-border);
+  }
+
+  .corner-links {
+    position: fixed;
+    right: 10px;
+    bottom: 10px;
   }
 
   .divider {
