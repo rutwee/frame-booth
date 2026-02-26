@@ -81,6 +81,7 @@ body {
   height: 100%;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 14px;
   border-radius: 12px;
   border: 1px solid rgba(193, 205, 224, 0.24);
@@ -88,10 +89,50 @@ body {
   box-shadow: 0 6px 18px -14px rgba(11, 16, 26, 0.9);
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  order: 2;
+}
+
+.top-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(192, 204, 224, 0.3);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.top-icon-btn img {
+  width: 15px;
+  height: 15px;
+  display: block;
+  margin: auto;
+  object-fit: contain;
+}
+
+.top-icon-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(218, 227, 242, 0.55);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+}
+
+.top-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .app-title-wrapper {
   display: flex;
   align-items: center;
   gap: 10px;
+  order: 1;
 }
 
 .app-logo {

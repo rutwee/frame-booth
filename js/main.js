@@ -13,8 +13,13 @@ const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MAX_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
+const HISTORY_LIMIT = 80;
 let copiedMockupSnapshot = null;
 let hasCanvasModeInitialized = false;
+let sceneHistory = [];
+let redoHistory = [];
+let initialSceneSnapshot = null;
+let isRestoringHistory = false;
 
 const IPHONE_SCREENSHOT_PROFILES = [
     {
@@ -150,7 +155,133 @@ function clampZoom(value) {
     return clamp(value, MIN_ZOOM, MAX_ZOOM);
 }
 
-function applyCanvasMode() {
+function getStage() {
+    return Konva.stages?.[0] || null;
+}
+
+function getMockupGroups(stage) {
+    if (!stage?.find) return [];
+    const found = stage.find('.mockup-group');
+    return typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
+}
+
+function serializeScene() {
+    const stage = getStage();
+    return {
+        canvasEnabled: !!UI.canvasEnabled?.checked,
+        docWidth: +UI.docWidth.value || 900,
+        docHeight: +UI.docHeight.value || 600,
+        bgColor: UI.bgColor.value || '#ffffff',
+        mockups: getMockupGroups(stage).map(group => ({
+            frameId: group.getAttr('frameId'),
+            x: group.x(),
+            y: group.y(),
+            scaleX: group.scaleX(),
+            scaleY: group.scaleY(),
+            rotation: group.rotation(),
+            screenshotSrc: group.findOne('.screenshot')?.image()?.src || null,
+        })),
+    };
+}
+
+function sceneSignature(scene) {
+    return JSON.stringify(scene);
+}
+
+function updateHistoryButtons() {
+    if (UI.undoBtn) UI.undoBtn.disabled = sceneHistory.length < 2;
+    if (UI.redoBtn) UI.redoBtn.disabled = redoHistory.length < 1;
+}
+
+function pushSceneHistory() {
+    if (isRestoringHistory) return;
+    const scene = serializeScene();
+    const prev = sceneHistory[sceneHistory.length - 1];
+    if (prev && sceneSignature(prev) === sceneSignature(scene)) return;
+    sceneHistory.push(scene);
+    if (sceneHistory.length > HISTORY_LIMIT) sceneHistory.shift();
+    redoHistory = [];
+    updateHistoryButtons();
+}
+
+async function addMockupByFrameId(frameId) {
+    const previousFrameId = UI.frameSelect.value;
+    try {
+        UI.frameSelect.value = frameId;
+        return await addMockup();
+    } finally {
+        UI.frameSelect.value = previousFrameId;
+    }
+}
+
+async function restoreScene(scene, forHistory = false) {
+    if (!scene) return;
+    const stage = getStage();
+    if (!stage) return;
+
+    isRestoringHistory = true;
+    try {
+        UI.canvasEnabled.checked = !!scene.canvasEnabled;
+        UI.docWidth.value = `${scene.docWidth ?? 900}`;
+        UI.docHeight.value = `${scene.docHeight ?? 600}`;
+        UI.bgColor.value = scene.bgColor || '#ffffff';
+        applyCanvasMode({ skipAnimation: true, skipHistory: true });
+
+        for (const group of getMockupGroups(stage)) group.destroy();
+        AppState.setCurrentSelectedMockup(null);
+        tr?.nodes([]);
+        stage.findOne('Layer')?.batchDraw();
+
+        for (const snapshot of scene.mockups || []) {
+            if (!snapshot?.frameId) continue;
+            const mockup = await addMockupByFrameId(snapshot.frameId);
+            if (!mockup) continue;
+            mockup.position({ x: snapshot.x || 0, y: snapshot.y || 0 });
+            mockup.scale({ x: snapshot.scaleX || 1, y: snapshot.scaleY || 1 });
+            mockup.rotation(snapshot.rotation || 0);
+            if (snapshot.screenshotSrc) {
+                const image = await Helpers.loadImage(snapshot.screenshotSrc);
+                placeImageInMockup(image, mockup);
+            }
+        }
+
+        AppState.setCurrentSelectedMockup(null);
+        tr?.nodes([]);
+        stage.findOne('Layer')?.batchDraw();
+        updateDownloadSceneButtonState();
+    } catch (error) {
+        console.error('Failed to restore scene:', error);
+    } finally {
+        isRestoringHistory = false;
+        if (!forHistory) pushSceneHistory();
+        updateHistoryButtons();
+    }
+}
+
+async function handleUndo() {
+    if (sceneHistory.length < 2) return;
+    const current = sceneHistory.pop();
+    if (current) redoHistory.push(current);
+    const previous = sceneHistory[sceneHistory.length - 1];
+    updateHistoryButtons();
+    await restoreScene(previous, true);
+}
+
+async function handleRedo() {
+    if (!redoHistory.length) return;
+    const next = redoHistory.pop();
+    if (!next) return;
+    sceneHistory.push(next);
+    updateHistoryButtons();
+    await restoreScene(next, true);
+}
+
+async function handleResetScene() {
+    if (!initialSceneSnapshot) return;
+    await restoreScene(initialSceneSnapshot);
+}
+
+function applyCanvasMode(options = {}) {
     const stage = Konva.stages?.[0];
     const previousStageWidth = stage?.width() || 0;
     const previousStageHeight = stage?.height() || 0;
@@ -164,7 +295,7 @@ function applyCanvasMode() {
     UI.docWidth.disabled = !enabled;
     UI.docHeight.disabled = !enabled;
     UI.bgColor.disabled = !enabled;
-    if (canvasCard && hasCanvasModeInitialized) {
+    if (canvasCard && hasCanvasModeInitialized && !options.skipAnimation) {
         canvasCard.classList.remove('canvas-settings-open');
         canvasCard.classList.remove('canvas-settings-close');
         aboveCard?.classList?.remove('canvas-neighbor-nudge');
@@ -182,6 +313,7 @@ function applyCanvasMode() {
     updateKonvaCanvasBackground();
     updateDownloadSceneButtonState();
     hasCanvasModeInitialized = true;
+    if (!options.skipHistory) pushSceneHistory();
 }
 
 function offsetMockupsForStageResize(previousStageWidth, previousStageHeight) {
@@ -238,6 +370,7 @@ async function pasteCopiedMockup() {
         tr?.nodes([newMockup]);
         newMockup.getLayer()?.batchDraw();
         updateDownloadSceneButtonState();
+        pushSceneHistory();
     } finally {
         UI.frameSelect.value = previousFrameId;
     }
@@ -248,6 +381,20 @@ function handleGlobalShortcuts(e) {
     if (!(e.metaKey || e.ctrlKey)) return;
 
     const key = e.key.toLowerCase();
+    if (key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+            handleRedo();
+        } else {
+            handleUndo();
+        }
+        return;
+    }
+    if (key === 'y') {
+        e.preventDefault();
+        handleRedo();
+        return;
+    }
     if (key === 'c') {
         const snapshot = createMockupSnapshot(AppState.currentSelectedMockup);
         if (!snapshot) return;
@@ -298,9 +445,8 @@ async function initializeApp() {
 
     // --- Initialize modules ---
     initKonva();
-    applyCanvasMode();
+    applyCanvasMode({ skipHistory: true });
     initExport();
-    window.addEventListener('frames-changed', updateDownloadSceneButtonState);
     initZoomPanControls();
     initDragAndDropUpload();
 
@@ -310,17 +456,30 @@ async function initializeApp() {
     } catch (error) {
         console.error('Failed to load default frame:', error);
     }
+    sceneHistory = [serializeScene()];
+    redoHistory = [];
+    initialSceneSnapshot = JSON.parse(JSON.stringify(sceneHistory[0]));
+    updateHistoryButtons();
 
     // --- Bind event listeners ---
     UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
     UI.docWidth.addEventListener('input', Helpers.resizeDocument);
     UI.docHeight.addEventListener('input', Helpers.resizeDocument);
     UI.canvasEnabled?.addEventListener('change', applyCanvasMode);
+    UI.undoBtn?.addEventListener('click', handleUndo);
+    UI.redoBtn?.addEventListener('click', handleRedo);
+    UI.resetBtn?.addEventListener('click', handleResetScene);
     UI.uploadBtn.addEventListener('click', () => UI.fileInput.click());
     UI.fileInput.addEventListener('change', handleImageUpload);
     UI.addFrameBtn.addEventListener('click', addMockup);
     UI.updateFrameBtn.addEventListener('click', handleFrameSwap);
     window.addEventListener('keydown', handleGlobalShortcuts);
+    window.addEventListener('frames-changed', () => {
+        updateDownloadSceneButtonState();
+        pushSceneHistory();
+    });
+    const stage = getStage();
+    stage?.on('dragend transformend', () => pushSceneHistory());
 
     // --- Start background rendering ---
     renderBackground();
@@ -616,6 +775,7 @@ async function handleFrameSwap() {
     tr?.nodes([newMockup]);
     newMockup.getLayer()?.batchDraw();
     updateDownloadSceneButtonState();
+    pushSceneHistory();
 }
 
 // ==========================================================================
@@ -662,6 +822,7 @@ async function loadAndPlaceImage(file, targetMockup) {
     const dataURL = await Helpers.readFileAsDataURL(file);
     const img = await Helpers.loadImage(dataURL);
     placeImageInMockup(img, targetMockup);
+    pushSceneHistory();
 }
 
 function getMockupAtClientPoint(clientX, clientY) {
