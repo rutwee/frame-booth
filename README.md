@@ -18,19 +18,7 @@ Frame Booth is a browser-based mockup tool for placing screenshots into iPhone f
 - HTML, CSS, JavaScript (ES modules)
 - [Konva.js](https://konvajs.org/) for stage/canvas interactions
 
-## Run Locally
-This is a static frontend app. Run it with any local web server.
-
-### Option 1: VS Code Live Server
-1. Open the project folder in VS Code
-2. Start **Live Server** from `index.html`
-
-### Option 2: Python
-```bash
-cd /Users/rutvikorat/Web_project/frame_app
-python3 -m http.server 5501
-```
-Then open: `http://127.0.0.1:5501`
+## Run : https://rutwee.github.io/frame-booth/
 
 ## Project Structure
 - `index.html` - app layout
@@ -57,22 +45,9 @@ Then open: `http://127.0.0.1:5501`
 ## Contact
 - Email: `framebooth.ca@gmail.com`
 
-## Screenshot / Preview
-Add app screenshots or GIF previews here for GitHub:
-
-```md
-![Frame Booth Workspace](./docs/preview-workspace.png)
-![Frame Booth Export Flow](./docs/preview-export.gif)
-```
-
-## Notes
-- Donation link can be configured later in `index.html` (`#donateLink`).
-- Apple names and device imagery are property of their respective owners.
-
 ## Roadmap
 - Add donation link integration when payment account is ready
 - Add optional snapping/guides for frame alignment
-- Add optional keyboard shortcut cheat sheet in UI
 - Add lightweight crash/error reporting (privacy-safe)
 
 ## Contributing
