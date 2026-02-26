@@ -20,6 +20,7 @@ let sceneHistory = [];
 let redoHistory = [];
 let initialSceneSnapshot = null;
 let isRestoringHistory = false;
+let resetViewportTransform = null;
 
 const IPHONE_SCREENSHOT_PROFILES = [
     {
@@ -278,6 +279,7 @@ async function handleRedo() {
 
 async function handleResetScene() {
     if (!initialSceneSnapshot) return;
+    resetViewportTransform?.();
     await restoreScene(initialSceneSnapshot);
 }
 
@@ -510,6 +512,15 @@ function initZoomPanControls() {
         mockupArea.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
     }
 
+    function resetTransform() {
+        scale = 1;
+        panX = 0;
+        panY = 0;
+        applyTransform();
+    }
+
+    resetViewportTransform = resetTransform;
+
     previewWrap.addEventListener('wheel', e => {
         e.preventDefault();
         if (e.ctrlKey || e.metaKey) {
@@ -542,10 +553,7 @@ function initZoomPanControls() {
         }
         if (e.key === '0') {
             e.preventDefault();
-            scale = 1;
-            panX = 0;
-            panY = 0;
-            applyTransform();
+            resetTransform();
         }
     });
 
