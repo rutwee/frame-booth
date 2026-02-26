@@ -23,6 +23,41 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function getVisibleMargin(rect) {
+  const shortSide = Math.min(rect.width || 0, rect.height || 0);
+  return clamp(shortSide * 0.2, 56, 120);
+}
+
+function constrainGroupToStage(group) {
+  if (!stage || !group?.getClientRect) return;
+  const rect = group.getClientRect();
+  const visibleMargin = getVisibleMargin(rect);
+  const stageWidth = stage.width();
+  const stageHeight = stage.height();
+
+  let dx = 0;
+  let dy = 0;
+
+  if (rect.x > stageWidth - visibleMargin) {
+    dx = stageWidth - visibleMargin - rect.x;
+  } else if (rect.x + rect.width < visibleMargin) {
+    dx = visibleMargin - (rect.x + rect.width);
+  }
+
+  if (rect.y > stageHeight - visibleMargin) {
+    dy = stageHeight - visibleMargin - rect.y;
+  } else if (rect.y + rect.height < visibleMargin) {
+    dy = visibleMargin - (rect.y + rect.height);
+  }
+
+  if (dx || dy) {
+    group.position({
+      x: group.x() + dx,
+      y: group.y() + dy,
+    });
+  }
+}
+
 function getCenteredPosition(frameWidth, frameHeight) {
   return {
     x: stage.width() / 2 - frameWidth / 2,
@@ -35,7 +70,9 @@ function getAutoPlacement(frameWidth, frameHeight) {
 
   const found = stage.find(".mockup-group");
   const groups =
-    typeof found?.toArray === "function" ? found.toArray() : Array.from(found || []);
+    typeof found?.toArray === "function"
+      ? found.toArray()
+      : Array.from(found || []);
   if (!groups.length) return getCenteredPosition(frameWidth, frameHeight);
 
   const anchor =
@@ -170,7 +207,7 @@ async function createAndAddPlaceholder(group, frameData, scale) {
     text: "Add a Screenshot",
     fontSize: 18,
     fontFamily: "Inter, sans-serif",
-    fill: "rgb(242, 242, 242)",
+    fill: "#b7c1d2",
     fontStyle: "500",
   });
 
@@ -271,10 +308,17 @@ export async function addMockup() {
   group.add(frameNode);
 
   group.position(getAutoPlacement(frameWidth, frameHeight));
+  constrainGroupToStage(group);
 
   group.on("click", (e) => {
     e.cancelBubble = true;
     selectMockupGroup(group);
+  });
+  group.on("dragmove transform", () => {
+    constrainGroupToStage(group);
+  });
+  group.on("dragend transformend", () => {
+    constrainGroupToStage(group);
   });
 
   layer.add(group);
@@ -355,6 +399,14 @@ export function resizeKonvaStage() {
       height: UI.mockupArea.offsetHeight,
     });
     backgroundRect.size(stage.size());
+    const found = stage.find(".mockup-group");
+    const groups =
+      typeof found?.toArray === "function"
+        ? found.toArray()
+        : Array.from(found || []);
+    for (const group of groups) {
+      constrainGroupToStage(group);
+    }
     layer.batchDraw();
   }
 }

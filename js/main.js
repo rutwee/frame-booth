@@ -13,6 +13,13 @@ const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MAX_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
+const HISTORY_LIMIT = 80;
+let copiedMockupSnapshot = null;
+let hasCanvasModeInitialized = false;
+let sceneHistory = [];
+let redoHistory = [];
+let initialSceneSnapshot = null;
+let isRestoringHistory = false;
 
 const IPHONE_SCREENSHOT_PROFILES = [
     {
@@ -148,15 +155,259 @@ function clampZoom(value) {
     return clamp(value, MIN_ZOOM, MAX_ZOOM);
 }
 
-function applyCanvasMode() {
+function getStage() {
+    return Konva.stages?.[0] || null;
+}
+
+function getMockupGroups(stage) {
+    if (!stage?.find) return [];
+    const found = stage.find('.mockup-group');
+    return typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
+}
+
+function serializeScene() {
+    const stage = getStage();
+    return {
+        canvasEnabled: !!UI.canvasEnabled?.checked,
+        docWidth: +UI.docWidth.value || 900,
+        docHeight: +UI.docHeight.value || 600,
+        bgColor: UI.bgColor.value || '#ffffff',
+        mockups: getMockupGroups(stage).map(group => ({
+            frameId: group.getAttr('frameId'),
+            x: group.x(),
+            y: group.y(),
+            scaleX: group.scaleX(),
+            scaleY: group.scaleY(),
+            rotation: group.rotation(),
+            screenshotSrc: group.findOne('.screenshot')?.image()?.src || null,
+        })),
+    };
+}
+
+function sceneSignature(scene) {
+    return JSON.stringify(scene);
+}
+
+function updateHistoryButtons() {
+    if (UI.undoBtn) UI.undoBtn.disabled = sceneHistory.length < 2;
+    if (UI.redoBtn) UI.redoBtn.disabled = redoHistory.length < 1;
+}
+
+function pushSceneHistory() {
+    if (isRestoringHistory) return;
+    const scene = serializeScene();
+    const prev = sceneHistory[sceneHistory.length - 1];
+    if (prev && sceneSignature(prev) === sceneSignature(scene)) return;
+    sceneHistory.push(scene);
+    if (sceneHistory.length > HISTORY_LIMIT) sceneHistory.shift();
+    redoHistory = [];
+    updateHistoryButtons();
+}
+
+async function addMockupByFrameId(frameId) {
+    const previousFrameId = UI.frameSelect.value;
+    try {
+        UI.frameSelect.value = frameId;
+        return await addMockup();
+    } finally {
+        UI.frameSelect.value = previousFrameId;
+    }
+}
+
+async function restoreScene(scene, forHistory = false) {
+    if (!scene) return;
+    const stage = getStage();
+    if (!stage) return;
+
+    isRestoringHistory = true;
+    try {
+        UI.canvasEnabled.checked = !!scene.canvasEnabled;
+        UI.docWidth.value = `${scene.docWidth ?? 900}`;
+        UI.docHeight.value = `${scene.docHeight ?? 600}`;
+        UI.bgColor.value = scene.bgColor || '#ffffff';
+        applyCanvasMode({ skipAnimation: true, skipHistory: true });
+
+        for (const group of getMockupGroups(stage)) group.destroy();
+        AppState.setCurrentSelectedMockup(null);
+        tr?.nodes([]);
+        stage.findOne('Layer')?.batchDraw();
+
+        for (const snapshot of scene.mockups || []) {
+            if (!snapshot?.frameId) continue;
+            const mockup = await addMockupByFrameId(snapshot.frameId);
+            if (!mockup) continue;
+            mockup.position({ x: snapshot.x || 0, y: snapshot.y || 0 });
+            mockup.scale({ x: snapshot.scaleX || 1, y: snapshot.scaleY || 1 });
+            mockup.rotation(snapshot.rotation || 0);
+            if (snapshot.screenshotSrc) {
+                const image = await Helpers.loadImage(snapshot.screenshotSrc);
+                placeImageInMockup(image, mockup);
+            }
+        }
+
+        AppState.setCurrentSelectedMockup(null);
+        tr?.nodes([]);
+        stage.findOne('Layer')?.batchDraw();
+        updateDownloadSceneButtonState();
+    } catch (error) {
+        console.error('Failed to restore scene:', error);
+    } finally {
+        isRestoringHistory = false;
+        if (!forHistory) pushSceneHistory();
+        updateHistoryButtons();
+    }
+}
+
+async function handleUndo() {
+    if (sceneHistory.length < 2) return;
+    const current = sceneHistory.pop();
+    if (current) redoHistory.push(current);
+    const previous = sceneHistory[sceneHistory.length - 1];
+    updateHistoryButtons();
+    await restoreScene(previous, true);
+}
+
+async function handleRedo() {
+    if (!redoHistory.length) return;
+    const next = redoHistory.pop();
+    if (!next) return;
+    sceneHistory.push(next);
+    updateHistoryButtons();
+    await restoreScene(next, true);
+}
+
+async function handleResetScene() {
+    if (!initialSceneSnapshot) return;
+    await restoreScene(initialSceneSnapshot);
+}
+
+function applyCanvasMode(options = {}) {
+    const stage = Konva.stages?.[0];
+    const previousStageWidth = stage?.width() || 0;
+    const previousStageHeight = stage?.height() || 0;
     const enabled = !!UI.canvasEnabled?.checked;
+    const canvasCard = UI.canvasSettingsPanel?.closest('.toolbar-group');
+    let aboveCard = canvasCard?.previousElementSibling || null;
+    while (aboveCard && !aboveCard.classList?.contains('toolbar-group')) {
+        aboveCard = aboveCard.previousElementSibling;
+    }
     UI.canvasSettingsPanel?.classList.toggle('is-disabled', !enabled);
     UI.docWidth.disabled = !enabled;
     UI.docHeight.disabled = !enabled;
     UI.bgColor.disabled = !enabled;
+    if (canvasCard && hasCanvasModeInitialized && !options.skipAnimation) {
+        canvasCard.classList.remove('canvas-settings-open');
+        canvasCard.classList.remove('canvas-settings-close');
+        aboveCard?.classList?.remove('canvas-neighbor-nudge');
+        void canvasCard.offsetWidth;
+        if (enabled) {
+            canvasCard.classList.add('canvas-settings-open');
+        } else {
+            canvasCard.classList.add('canvas-settings-close');
+            aboveCard?.classList?.add('canvas-neighbor-nudge');
+        }
+    }
+    Helpers.resizeDocument();
+    offsetMockupsForStageResize(previousStageWidth, previousStageHeight);
     Helpers.updateMockupBackground();
     updateKonvaCanvasBackground();
     updateDownloadSceneButtonState();
+    hasCanvasModeInitialized = true;
+    if (!options.skipHistory) pushSceneHistory();
+}
+
+function offsetMockupsForStageResize(previousStageWidth, previousStageHeight) {
+    const stage = Konva.stages?.[0];
+    if (!stage?.find || !previousStageWidth || !previousStageHeight) return;
+
+    const dx = (stage.width() - previousStageWidth) / 2;
+    const dy = (stage.height() - previousStageHeight) / 2;
+    if (!dx && !dy) return;
+
+    const found = stage.find('.mockup-group');
+    const groups = typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
+    if (!groups.length) return;
+
+    for (const group of groups) {
+        group.x(group.x() + dx);
+        group.y(group.y() + dy);
+    }
+    groups[0].getLayer()?.batchDraw();
+}
+
+function createMockupSnapshot(mockup) {
+    if (!mockup) return null;
+    return {
+        frameId: mockup.getAttr('frameId'),
+        x: mockup.x(),
+        y: mockup.y(),
+        scaleX: mockup.scaleX(),
+        scaleY: mockup.scaleY(),
+        rotation: mockup.rotation(),
+        image: mockup.findOne('.screenshot')?.image() || null,
+    };
+}
+
+function applyMockupSnapshot(mockup, snapshot) {
+    if (!mockup || !snapshot) return;
+    mockup.x(snapshot.x);
+    mockup.y(snapshot.y);
+    mockup.scaleX(snapshot.scaleX);
+    mockup.scaleY(snapshot.scaleY);
+    mockup.rotation(snapshot.rotation);
+    if (snapshot.image) placeImageInMockup(snapshot.image, mockup);
+}
+
+async function pasteCopiedMockup() {
+    if (!copiedMockupSnapshot?.frameId) return;
+    const previousFrameId = UI.frameSelect.value;
+    try {
+        UI.frameSelect.value = copiedMockupSnapshot.frameId;
+        const newMockup = await addMockup();
+        if (!newMockup) return;
+        applyMockupSnapshot(newMockup, copiedMockupSnapshot);
+        AppState.setCurrentSelectedMockup(newMockup);
+        tr?.nodes([newMockup]);
+        newMockup.getLayer()?.batchDraw();
+        updateDownloadSceneButtonState();
+        pushSceneHistory();
+    } finally {
+        UI.frameSelect.value = previousFrameId;
+    }
+}
+
+function handleGlobalShortcuts(e) {
+    if (isTypingInFormField() || e.repeat) return;
+    if (!(e.metaKey || e.ctrlKey)) return;
+
+    const key = e.key.toLowerCase();
+    if (key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+            handleRedo();
+        } else {
+            handleUndo();
+        }
+        return;
+    }
+    if (key === 'y') {
+        e.preventDefault();
+        handleRedo();
+        return;
+    }
+    if (key === 'c') {
+        const snapshot = createMockupSnapshot(AppState.currentSelectedMockup);
+        if (!snapshot) return;
+        copiedMockupSnapshot = snapshot;
+        e.preventDefault();
+        return;
+    }
+
+    if (key === 'v') {
+        if (!copiedMockupSnapshot) return;
+        e.preventDefault();
+        pasteCopiedMockup();
+    }
 }
 
 // ==========================================================================
@@ -194,9 +445,8 @@ async function initializeApp() {
 
     // --- Initialize modules ---
     initKonva();
-    applyCanvasMode();
+    applyCanvasMode({ skipHistory: true });
     initExport();
-    window.addEventListener('frames-changed', updateDownloadSceneButtonState);
     initZoomPanControls();
     initDragAndDropUpload();
 
@@ -206,16 +456,30 @@ async function initializeApp() {
     } catch (error) {
         console.error('Failed to load default frame:', error);
     }
+    sceneHistory = [serializeScene()];
+    redoHistory = [];
+    initialSceneSnapshot = JSON.parse(JSON.stringify(sceneHistory[0]));
+    updateHistoryButtons();
 
     // --- Bind event listeners ---
     UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
     UI.docWidth.addEventListener('input', Helpers.resizeDocument);
     UI.docHeight.addEventListener('input', Helpers.resizeDocument);
     UI.canvasEnabled?.addEventListener('change', applyCanvasMode);
+    UI.undoBtn?.addEventListener('click', handleUndo);
+    UI.redoBtn?.addEventListener('click', handleRedo);
+    UI.resetBtn?.addEventListener('click', handleResetScene);
     UI.uploadBtn.addEventListener('click', () => UI.fileInput.click());
     UI.fileInput.addEventListener('change', handleImageUpload);
     UI.addFrameBtn.addEventListener('click', addMockup);
     UI.updateFrameBtn.addEventListener('click', handleFrameSwap);
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    window.addEventListener('frames-changed', () => {
+        updateDownloadSceneButtonState();
+        pushSceneHistory();
+    });
+    const stage = getStage();
+    stage?.on('dragend transformend', () => pushSceneHistory());
 
     // --- Start background rendering ---
     renderBackground();
@@ -498,42 +762,20 @@ async function handleFrameSwap() {
     const oldMockup = AppState.currentSelectedMockup;
     if (!oldMockup) return;
 
-    
-    const oldTransform = {
-        x: oldMockup.x(),
-        y: oldMockup.y(),
-        scaleX: oldMockup.scaleX(),
-        scaleY: oldMockup.scaleY(),
-        rotation: oldMockup.rotation(),
-    };
-
-    let imageToReapply = null;
-    const screenshotContainer = oldMockup.findOne('.screenshot-container');
-    if (screenshotContainer) {
-        const screenshotNode = screenshotContainer.findOne('.screenshot');
-        if (screenshotNode) {
-            imageToReapply = screenshotNode.image(); 
-        }
-    }
+    const oldSnapshot = createMockupSnapshot(oldMockup);
+    if (!oldSnapshot) return;
 
     const newMockup = await addMockup();
     if (!newMockup) return;
 
-    newMockup.x(oldTransform.x);
-    newMockup.y(oldTransform.y);
-    newMockup.scaleX(oldTransform.scaleX);
-    newMockup.scaleY(oldTransform.scaleY);
-    newMockup.rotation(oldTransform.rotation);
-
-    if (imageToReapply) {
-        placeImageInMockup(imageToReapply, newMockup);
-    }
+    applyMockupSnapshot(newMockup, oldSnapshot);
 
     oldMockup.destroy();
     AppState.setCurrentSelectedMockup(newMockup);
     tr?.nodes([newMockup]);
     newMockup.getLayer()?.batchDraw();
     updateDownloadSceneButtonState();
+    pushSceneHistory();
 }
 
 // ==========================================================================
@@ -580,6 +822,7 @@ async function loadAndPlaceImage(file, targetMockup) {
     const dataURL = await Helpers.readFileAsDataURL(file);
     const img = await Helpers.loadImage(dataURL);
     placeImageInMockup(img, targetMockup);
+    pushSceneHistory();
 }
 
 function getMockupAtClientPoint(clientX, clientY) {
@@ -649,18 +892,15 @@ function renderBackground() {
     UI.canvasEl.style.height = `${h}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     
-    ctx.fillStyle = '#dfdedeff'; 
+    ctx.fillStyle = '#e8edf5';
     ctx.fillRect(0, 0, w, h);
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = '#beb8adff';
-
-    for (let x = -h; x < w; x += 32) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x + h, h);
-        ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
 }
 
-window.addEventListener('resize', () => requestAnimationFrame(renderBackground));
+window.addEventListener('resize', () => requestAnimationFrame(() => {
+    const stage = Konva.stages?.[0];
+    const previousStageWidth = stage?.width() || 0;
+    const previousStageHeight = stage?.height() || 0;
+    Helpers.resizeDocument();
+    offsetMockupsForStageResize(previousStageWidth, previousStageHeight);
+    renderBackground();
+}));

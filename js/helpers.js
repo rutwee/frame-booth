@@ -39,8 +39,21 @@ export function updateMockupBackground() {
 }
 
 export function resizeDocument() {
-    const w = +docWidth.value || 900;
-    const h = +docHeight.value || 600;
+    const enabled = isCanvasEnabled();
+    let w;
+    let h;
+
+    if (enabled) {
+        w = +docWidth.value || 900;
+        h = +docHeight.value || 600;
+    } else {
+        const parent = mockupArea.parentElement;
+        const styles = parent ? getComputedStyle(parent) : null;
+        const padX = (parseFloat(styles?.paddingLeft || 0) + parseFloat(styles?.paddingRight || 0));
+        const padY = (parseFloat(styles?.paddingTop || 0) + parseFloat(styles?.paddingBottom || 0));
+        w = Math.max(1, (parent?.clientWidth || mockupArea.offsetWidth || 900) - padX);
+        h = Math.max(1, (parent?.clientHeight || mockupArea.offsetHeight || 600) - padY);
+    }
 
     mockupArea.style.width = `${w}px`;
     mockupArea.style.height = `${h}px`;
