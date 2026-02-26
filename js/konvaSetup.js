@@ -319,6 +319,7 @@ export async function addMockup() {
   });
   group.on("dragend transformend", () => {
     constrainGroupToStage(group);
+    notifyFramesChanged();
   });
 
   layer.add(group);
@@ -371,6 +372,9 @@ export function initKonva() {
     if (e.target === stage) {
       clearSelection();
     }
+  });
+  stage.on("dragend transformend", () => {
+    notifyFramesChanged();
   });
 
   /* UI event listeners tied to Konva actions */
