@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Disclaimer - Frame Booth</title>
+  <style>
+    :root{
+      --bg:#edf2fb;
+      --card:#ffffff;
+      --ink:#43516a;
+      --muted:#76839a;
+      --line:#d7deec;
+      --accent:#0d99ff;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      font-family:Manrope,Arial,sans-serif;
+      background:
+        radial-gradient(circle at 0% 0%, rgba(201,155,36,.09), transparent 34%),
+        radial-gradient(circle at 100% 100%, rgba(13,153,255,.08), transparent 35%),
+        var(--bg);
+      color:var(--ink);
+      padding:28px 14px;
+    }
+    .sheet{
+      max-width:760px;
+      margin:0 auto;
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:20px 18px;
+      box-shadow:0 14px 30px -24px rgba(18,34,66,.45);
+    }
+    h1{margin:0 0 4px;font-size:1.3rem}
+    h2{
+      margin:16px 0 8px;
+      font-size:.9rem;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+    p,li{font-size:.84rem;line-height:1.55}
+    .date{margin:0 0 12px;color:var(--muted);font-size:.76rem}
+    a{color:var(--accent);text-decoration:none}
+    a:hover{text-decoration:underline}
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <h1>Disclaimer</h1>
+    <p class="date">Last updated: February 26, 2026</p>
+    <p>This website is operated by Rutvi Korat (Canada).</p>
+    <p>Frame Booth is an independent tool. It is not affiliated with, endorsed by, or sponsored by Apple Inc.</p>
+    <p>Apple names, marks, and device imagery belong to their respective owners and should be used under applicable brand/legal rules.</p>
+    <p>This product and parts of its documentation were built with AI-assisted tooling support.</p>
+    <h2>Content Responsibility</h2>
+    <p>You are responsible for ensuring you have rights to any uploaded screenshots and exported assets.</p>
+    <h2>Contact</h2>
+    <p>Email: <a href="mailto:framebooth.ca@gmail.com">framebooth.ca@gmail.com</a></p>
+  </main>
+</body>
+</html>
