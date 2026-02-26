@@ -712,18 +712,8 @@ function renderBackground() {
     UI.canvasEl.style.height = `${h}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     
-    ctx.fillStyle = '#dfdedeff'; 
+    ctx.fillStyle = '#e8edf5';
     ctx.fillRect(0, 0, w, h);
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = '#beb8adff';
-
-    for (let x = -h; x < w; x += 32) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x + h, h);
-        ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
 }
 
 window.addEventListener('resize', () => requestAnimationFrame(() => {

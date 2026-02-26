@@ -35,7 +35,9 @@ function getAutoPlacement(frameWidth, frameHeight) {
 
   const found = stage.find(".mockup-group");
   const groups =
-    typeof found?.toArray === "function" ? found.toArray() : Array.from(found || []);
+    typeof found?.toArray === "function"
+      ? found.toArray()
+      : Array.from(found || []);
   if (!groups.length) return getCenteredPosition(frameWidth, frameHeight);
 
   const anchor =
@@ -170,7 +172,7 @@ async function createAndAddPlaceholder(group, frameData, scale) {
     text: "Add a Screenshot",
     fontSize: 18,
     fontFamily: "Inter, sans-serif",
-    fill: "rgb(242, 242, 242)",
+    fill: "#b7c1d2",
     fontStyle: "500",
   });
 

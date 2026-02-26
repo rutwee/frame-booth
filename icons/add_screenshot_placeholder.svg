@@ -2,7 +2,7 @@
   <desc>
     Gallery Add Streamline Icon: https://streamlinehq.com
   </desc>
-  <path d="M22 12c0 4.714 0 7.0711 -1.4645 8.5355C19.0711 22 16.714 22 12 22c-4.71405 0 -7.07107 0 -8.53553 -1.4645C2 19.0711 2 16.714 2 12c0 -4.71405 0 -7.07107 1.46447 -8.53553C4.92893 2 7.28595 2 12 2" stroke="#f0f0f0" stroke-linecap="round" stroke-width="1.5"></path>
-  <path d="m2 12.5001 1.75159 -1.5326c0.91127 -0.7973 2.28469 -0.7516 3.1409 0.1046l4.28971 4.2897c0.6872 0.6873 1.769 0.781 2.5642 0.2221l0.2982 -0.2095c1.1442 -0.8042 2.6923 -0.711 3.7319 0.2246L21 18.5001" stroke="#f0f0f0" stroke-linecap="round" stroke-width="1.5"></path>
-  <path d="M15 5.5h3.5m0 0H22m-3.5 0V9m0 -3.5V2" stroke="#f0f0f0" stroke-linecap="round" stroke-width="1.5"></path>
+  <path d="M22 12c0 4.714 0 7.0711 -1.4645 8.5355C19.0711 22 16.714 22 12 22c-4.71405 0 -7.07107 0 -8.53553 -1.4645C2 19.0711 2 16.714 2 12c0 -4.71405 0 -7.07107 1.46447 -8.53553C4.92893 2 7.28595 2 12 2" stroke="#b7c1d2" stroke-linecap="round" stroke-width="1.5"></path>
+  <path d="m2 12.5001 1.75159 -1.5326c0.91127 -0.7973 2.28469 -0.7516 3.1409 0.1046l4.28971 4.2897c0.6872 0.6873 1.769 0.781 2.5642 0.2221l0.2982 -0.2095c1.1442 -0.8042 2.6923 -0.711 3.7319 0.2246L21 18.5001" stroke="#b7c1d2" stroke-linecap="round" stroke-width="1.5"></path>
+  <path d="M15 5.5h3.5m0 0H22m-3.5 0V9m0 -3.5V2" stroke="#b7c1d2" stroke-linecap="round" stroke-width="1.5"></path>
 </svg>
