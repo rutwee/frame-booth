@@ -14,6 +14,7 @@ const MAX_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 let copiedMockupSnapshot = null;
+let hasCanvasModeInitialized = false;
 
 const IPHONE_SCREENSHOT_PROFILES = [
     {
@@ -154,15 +155,33 @@ function applyCanvasMode() {
     const previousStageWidth = stage?.width() || 0;
     const previousStageHeight = stage?.height() || 0;
     const enabled = !!UI.canvasEnabled?.checked;
+    const canvasCard = UI.canvasSettingsPanel?.closest('.toolbar-group');
+    let aboveCard = canvasCard?.previousElementSibling || null;
+    while (aboveCard && !aboveCard.classList?.contains('toolbar-group')) {
+        aboveCard = aboveCard.previousElementSibling;
+    }
     UI.canvasSettingsPanel?.classList.toggle('is-disabled', !enabled);
     UI.docWidth.disabled = !enabled;
     UI.docHeight.disabled = !enabled;
     UI.bgColor.disabled = !enabled;
+    if (canvasCard && hasCanvasModeInitialized) {
+        canvasCard.classList.remove('canvas-settings-open');
+        canvasCard.classList.remove('canvas-settings-close');
+        aboveCard?.classList?.remove('canvas-neighbor-nudge');
+        void canvasCard.offsetWidth;
+        if (enabled) {
+            canvasCard.classList.add('canvas-settings-open');
+        } else {
+            canvasCard.classList.add('canvas-settings-close');
+            aboveCard?.classList?.add('canvas-neighbor-nudge');
+        }
+    }
     Helpers.resizeDocument();
     offsetMockupsForStageResize(previousStageWidth, previousStageHeight);
     Helpers.updateMockupBackground();
     updateKonvaCanvasBackground();
     updateDownloadSceneButtonState();
+    hasCanvasModeInitialized = true;
 }
 
 function offsetMockupsForStageResize(previousStageWidth, previousStageHeight) {
