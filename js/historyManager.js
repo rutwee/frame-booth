@@ -71,11 +71,12 @@ export function createHistoryManager({
 
             for (const snapshot of scene.mockups || []) {
                 if (!snapshot?.frameId) continue;
-                const mockup = await addMockupByFrameId(snapshot.frameId);
+                const mockup = await addMockupByFrameId(snapshot.frameId, {
+                    initialState: snapshot,
+                    skipSelect: true,
+                    skipNotify: true,
+                });
                 if (!mockup) continue;
-                mockup.position({ x: snapshot.x || 0, y: snapshot.y || 0 });
-                mockup.scale({ x: snapshot.scaleX || 1, y: snapshot.scaleY || 1 });
-                mockup.rotation(snapshot.rotation || 0);
                 if (!snapshot.screenshotSrc) continue;
                 const image = await helpers.loadImage(snapshot.screenshotSrc);
                 placeImageInMockup(image, mockup);

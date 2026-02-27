@@ -21,11 +21,13 @@ import { createLayoutManager } from './layoutManager.js';
 const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
+const FRAMES_CHANGED_HISTORY_DEBOUNCE_MS = 80;
 let resetViewportTransform = null;
 let historyManager = null;
 let uploadManager = null;
 let frameActions = null;
 let layoutManager = null;
+let framesChangedHistoryTimer = null;
 
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -49,11 +51,21 @@ function getMockupGroups(stage) {
     return typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
 }
 
-async function addMockupByFrameId(frameId) {
+function scheduleHistoryPushFromFramesChanged() {
+    if (framesChangedHistoryTimer) {
+        clearTimeout(framesChangedHistoryTimer);
+    }
+    framesChangedHistoryTimer = setTimeout(() => {
+        framesChangedHistoryTimer = null;
+        historyManager?.push();
+    }, FRAMES_CHANGED_HISTORY_DEBOUNCE_MS);
+}
+
+async function addMockupByFrameId(frameId, options) {
     const previousFrameId = UI.frameSelect.value;
     try {
         UI.frameSelect.value = frameId;
-        return await addMockup();
+        return await addMockup(options);
     } finally {
         UI.frameSelect.value = previousFrameId;
     }
@@ -169,7 +181,7 @@ async function initializeApp() {
     window.addEventListener('keydown', frameActions.handleGlobalShortcuts);
     window.addEventListener('frames-changed', () => {
         updateDownloadSceneButtonState();
-        historyManager?.push();
+        scheduleHistoryPushFromFramesChanged();
     });
     getStage()?.on('dragend transformend', () => historyManager?.push());
     layoutManager.bindWindowResize();

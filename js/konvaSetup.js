@@ -89,8 +89,13 @@ async function deleteSelectedMockup() {
 // ==========================================================================
 // ADD MOCKUP - addMockup()
 // ==========================================================================
-export async function addMockup() {
+export async function addMockup(options = {}) {
   if (!stage || !layer || !tr) return null;
+  const {
+    initialState = null,
+    skipSelect = false,
+    skipNotify = false,
+  } = options;
 
   const frameData = frames.find((f) => f.id === UI.frameSelect.value);
   if (!frameData) return null;
@@ -124,7 +129,15 @@ export async function addMockup() {
   await createAndAddPlaceholder(group, frameData, scale);
   group.add(frameNode);
 
-  group.position(boundsHelpers?.getAutoPlacement(frameWidth, frameHeight) || { x: 0, y: 0 });
+  if (initialState) {
+    group.position({ x: initialState.x || 0, y: initialState.y || 0 });
+    group.scale({ x: initialState.scaleX || 1, y: initialState.scaleY || 1 });
+    group.rotation(initialState.rotation || 0);
+  } else {
+    group.position(
+      boundsHelpers?.getAutoPlacement(frameWidth, frameHeight) || { x: 0, y: 0 },
+    );
+  }
   boundsHelpers?.constrainGroupToStage(group);
 
   group.on("click", (e) => {
@@ -142,9 +155,13 @@ export async function addMockup() {
   layer.add(group);
   lastAddedMockup = group;
 
-  selectionManager?.selectMockupGroup(group);
+  if (!skipSelect) {
+    selectionManager?.selectMockupGroup(group);
+  }
   layer.batchDraw();
-  notifyFramesChanged();
+  if (!skipNotify) {
+    notifyFramesChanged();
+  }
   return group;
 }
 
