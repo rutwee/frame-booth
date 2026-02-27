@@ -63,14 +63,13 @@ export function getContentBounds(nodes) {
 }
 
 /**
- * Legacy behavior rule:
- * scene download is available when canvas is on OR more than one frame exists.
+ * Scene download is available whenever at least one frame exists.
  * @param {boolean} canvasEnabled
  * @param {number} frameCount
  * @returns {boolean}
  */
 export function shouldEnableSceneDownload(canvasEnabled, frameCount) {
-    return !!canvasEnabled || frameCount > 1;
+    return frameCount > 0;
 }
 
 /**
@@ -82,4 +81,3 @@ export function shouldEnableSceneDownload(canvasEnabled, frameCount) {
 export function getSceneExportCropBounds(canvasEnabled, nodes) {
     return canvasEnabled ? null : getContentBounds(nodes);
 }
-
