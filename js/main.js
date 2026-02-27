@@ -51,6 +51,18 @@ function getMockupGroups(stage) {
     return typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
 }
 
+async function ensureInitialFrameVisible() {
+    const stage = getStage();
+    if (!stage) return;
+    if (getMockupGroups(stage).length > 0) return;
+    try {
+        await addMockup();
+    } catch (error) {
+        console.error('Failed to recover initial frame:', error);
+    }
+    layoutManager?.fitMockupsToViewport?.();
+}
+
 function scheduleHistoryPushFromFramesChanged() {
     if (framesChangedHistoryTimer) {
         clearTimeout(framesChangedHistoryTimer);
@@ -71,6 +83,39 @@ function bindCanvasSizeCommitInput(inputEl) {
         e.preventDefault();
         inputEl.blur();
     });
+}
+
+function initResponsiveToolbarToggle() {
+    const toolbar = document.querySelector('#toolbarPanel');
+    const toggleBtn = document.querySelector('#toolbarToggleBtn');
+    const backdrop = document.querySelector('#toolbarBackdrop');
+    if (!toolbar || !toggleBtn || !backdrop) return;
+
+    const phoneMediaQuery = window.matchMedia('(max-width: 768px)');
+    const setOpenState = (open) => {
+        const shouldOpen = !!open && phoneMediaQuery.matches;
+        document.body.classList.toggle('toolbar-open', shouldOpen);
+        toggleBtn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+        backdrop.hidden = !shouldOpen;
+    };
+
+    toggleBtn.addEventListener('click', () => {
+        const isOpen = document.body.classList.contains('toolbar-open');
+        setOpenState(!isOpen);
+    });
+    backdrop.addEventListener('click', () => setOpenState(false));
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') setOpenState(false);
+    });
+    const onMediaChange = (e) => {
+        if (!e.matches) setOpenState(false);
+    };
+    if (typeof phoneMediaQuery.addEventListener === 'function') {
+        phoneMediaQuery.addEventListener('change', onMediaChange);
+    } else if (typeof phoneMediaQuery.addListener === 'function') {
+        phoneMediaQuery.addListener(onMediaChange);
+    }
+    setOpenState(false);
 }
 
 async function addMockupByFrameId(frameId, options) {
@@ -115,6 +160,7 @@ async function initializeApp() {
     }
 
     Helpers.resizeDocument();
+    initResponsiveToolbarToggle();
 
     // --- Initialize modules ---
     initKonva();
@@ -137,6 +183,7 @@ async function initializeApp() {
         getMockupGroups,
         placeImageInMockup,
         updateDownloadSceneButtonState,
+        ensureResponsiveFit: () => layoutManager?.fitMockupsToViewport?.(),
     });
     uploadManager = createUploadManager({
         ui: UI,
@@ -176,6 +223,10 @@ async function initializeApp() {
     } catch (error) {
         console.error('Failed to load default frame:', error);
     }
+    layoutManager?.fitMockupsToViewport?.();
+    setTimeout(() => {
+        ensureInitialFrameVisible();
+    }, 120);
     historyManager.captureInitialScene();
 
     // --- Bind event listeners ---
@@ -192,6 +243,7 @@ async function initializeApp() {
     UI.updateFrameBtn.addEventListener('click', frameActions.handleFrameSwap);
     window.addEventListener('keydown', frameActions.handleGlobalShortcuts);
     window.addEventListener('frames-changed', () => {
+        layoutManager?.fitMockupsToViewport?.();
         updateDownloadSceneButtonState();
         scheduleHistoryPushFromFramesChanged();
     });
