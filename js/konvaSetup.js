@@ -5,6 +5,9 @@
 import * as UI from "./ui.js";
 import { frames, AppState } from "./state.js";
 import { loadImage, isCanvasEnabled } from "./helpers.js";
+import { createKonvaBoundsHelpers } from "./konvaBounds.js";
+import { createKonvaPlaceholderFactory } from "./konvaPlaceholder.js";
+import { createKonvaSelectionManager } from "./konvaSelection.js";
 
 // variables for the Konva stage and its components //
 let stage;
@@ -13,126 +16,11 @@ export let tr;
 let backgroundRect;
 export let lastAddedMockup = null;
 let initialStageHeight;
-let placeholderIconImagePromise;
+let boundsHelpers;
+let placeholderFactory;
+let selectionManager;
 
 const EDITABLE_TAGS = ["INPUT", "SELECT", "TEXTAREA"];
-const AUTO_LAYOUT_MARGIN = 24;
-const AUTO_LAYOUT_GAP = 24;
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function getVisibleMargin(rect) {
-  const shortSide = Math.min(rect.width || 0, rect.height || 0);
-  return clamp(shortSide * 0.2, 56, 120);
-}
-
-function constrainGroupToStage(group) {
-  if (!stage || !group?.getClientRect) return;
-  const rect = group.getClientRect();
-  const visibleMargin = getVisibleMargin(rect);
-  const stageWidth = stage.width();
-  const stageHeight = stage.height();
-
-  let dx = 0;
-  let dy = 0;
-
-  if (rect.x > stageWidth - visibleMargin) {
-    dx = stageWidth - visibleMargin - rect.x;
-  } else if (rect.x + rect.width < visibleMargin) {
-    dx = visibleMargin - (rect.x + rect.width);
-  }
-
-  if (rect.y > stageHeight - visibleMargin) {
-    dy = stageHeight - visibleMargin - rect.y;
-  } else if (rect.y + rect.height < visibleMargin) {
-    dy = visibleMargin - (rect.y + rect.height);
-  }
-
-  if (dx || dy) {
-    group.position({
-      x: group.x() + dx,
-      y: group.y() + dy,
-    });
-  }
-}
-
-function getCenteredPosition(frameWidth, frameHeight) {
-  return {
-    x: stage.width() / 2 - frameWidth / 2,
-    y: stage.height() / 2 - frameHeight / 2,
-  };
-}
-
-function getAutoPlacement(frameWidth, frameHeight) {
-  if (!stage?.find) return getCenteredPosition(frameWidth, frameHeight);
-
-  const found = stage.find(".mockup-group");
-  const groups =
-    typeof found?.toArray === "function"
-      ? found.toArray()
-      : Array.from(found || []);
-  if (!groups.length) return getCenteredPosition(frameWidth, frameHeight);
-
-  const anchor =
-    lastAddedMockup?.getStage?.() === stage
-      ? lastAddedMockup
-      : groups[groups.length - 1];
-  const rect = anchor?.getClientRect?.();
-  if (!rect) return getCenteredPosition(frameWidth, frameHeight);
-
-  const stageWidth = stage.width();
-  const stageHeight = stage.height();
-  let x = rect.x + rect.width + AUTO_LAYOUT_GAP;
-  let y = rect.y;
-
-  if (x + frameWidth > stageWidth - AUTO_LAYOUT_MARGIN) {
-    x = AUTO_LAYOUT_MARGIN;
-    y = rect.y + rect.height + AUTO_LAYOUT_GAP;
-  }
-
-  const minX = AUTO_LAYOUT_MARGIN;
-  const minY = AUTO_LAYOUT_MARGIN;
-  const maxX = Math.max(minX, stageWidth - frameWidth - AUTO_LAYOUT_MARGIN);
-  const maxY = Math.max(minY, stageHeight - frameHeight - AUTO_LAYOUT_MARGIN);
-
-  return {
-    x: clamp(x, minX, maxX),
-    y: clamp(y, minY, maxY),
-  };
-}
-
-function setSelectionButtonsDisabled(disabled) {
-  UI.deleteBtn.disabled = disabled;
-  UI.downloadFrameBtn.disabled = disabled;
-  UI.updateFrameBtn.disabled = disabled;
-}
-
-function clearSelection() {
-  AppState.setCurrentSelectedMockup(null);
-  tr.nodes([]);
-  setSelectionButtonsDisabled(true);
-  layer.batchDraw();
-}
-
-function selectMockupGroup(group) {
-  AppState.setCurrentSelectedMockup(group);
-  tr.nodes([group]);
-  group.moveToTop();
-  tr.moveToTop();
-  setSelectionButtonsDisabled(false);
-  layer.batchDraw();
-}
-
-function getPlaceholderIconImage() {
-  if (!placeholderIconImagePromise) {
-    placeholderIconImagePromise = loadImage(
-      "icons/add_screenshot_placeholder.svg",
-    );
-  }
-  return placeholderIconImagePromise;
-}
 
 function notifyFramesChanged() {
   window.dispatchEvent(new Event("frames-changed"));
@@ -158,79 +46,8 @@ export function updateKonvaCanvasBackground() {
 // PLACEHOLDER - createAndAddPlaceholder()
 // ==========================================================================
 async function createAndAddPlaceholder(group, frameData, scale) {
-  const screenRect = {
-    x: frameData.screen.x * scale,
-    y: frameData.screen.y * scale,
-    width: frameData.screen.width * scale,
-    height: frameData.screen.height * scale,
-  };
-
-  const placeholderGroup = new Konva.Group({
-    name: "upload-placeholder",
-    x: screenRect.x,
-    y: screenRect.y,
-
-    // === CLIP FUNCTION ===
-    clipFunc: function (ctx) {
-      const scaledRadius = frameData.screen.cornerRadius * scale;
-      ctx.beginPath();
-      ctx.roundRect(0, 0, screenRect.width, screenRect.height, scaledRadius);
-
-      // island cutout
-      if (frameData.screen.island) {
-        const island = frameData.screen.island;
-        // island position relative to the placeholder group
-        const islandX = (island.x - frameData.screen.x) * scale;
-        const islandY = (island.y - frameData.screen.y) * scale;
-        const islandW = island.width * scale;
-        const islandH = island.height * scale;
-        const islandRadius = island.cornerRadius * scale;
-        ctx.roundRect(islandX, islandY, islandW, islandH, islandRadius);
-      }
-      ctx.closePath();
-    },
-  });
-
-  const clickableArea = new Konva.Rect({
-    width: screenRect.width,
-    height: screenRect.height,
-  });
-
-  const iconImg = await getPlaceholderIconImage();
-  const icon = new Konva.Image({
-    image: iconImg,
-    width: 60,
-    height: 60,
-  });
-
-  const placeholderText = new Konva.Text({
-    text: "Add a Screenshot",
-    fontSize: 18,
-    fontFamily: "Inter, sans-serif",
-    fill: "#b7c1d2",
-    fontStyle: "500",
-  });
-
-  icon.position({ x: screenRect.width / 2, y: screenRect.height / 2 - 10 });
-  placeholderText.position({
-    x: screenRect.width / 2,
-    y: screenRect.height / 2 + 40,
-  });
-
-  icon.offset({ x: 30, y: 30 });
-  placeholderText.offset({
-    x: placeholderText.width() / 2,
-    y: placeholderText.height() / 2,
-  });
-
-  placeholderGroup.add(clickableArea, icon, placeholderText);
-  group.add(placeholderGroup);
-
-  placeholderGroup.on("dblclick dbltap", (e) => {
-    e.cancelBubble = true;
-    selectMockupGroup(group);
-    UI.fileInput.click();
-  });
+  if (!placeholderFactory) return;
+  await placeholderFactory.createAndAddPlaceholder(group, frameData, scale);
 }
 
 // ==========================================================================
@@ -265,7 +82,7 @@ async function deleteSelectedMockup() {
   }
 
   selected.destroy();
-  clearSelection();
+  selectionManager?.clearSelection();
   notifyFramesChanged();
 }
 
@@ -307,25 +124,25 @@ export async function addMockup() {
   await createAndAddPlaceholder(group, frameData, scale);
   group.add(frameNode);
 
-  group.position(getAutoPlacement(frameWidth, frameHeight));
-  constrainGroupToStage(group);
+  group.position(boundsHelpers?.getAutoPlacement(frameWidth, frameHeight) || { x: 0, y: 0 });
+  boundsHelpers?.constrainGroupToStage(group);
 
   group.on("click", (e) => {
     e.cancelBubble = true;
-    selectMockupGroup(group);
+    selectionManager?.selectMockupGroup(group);
   });
   group.on("dragmove transform", () => {
-    constrainGroupToStage(group);
+    boundsHelpers?.constrainGroupToStage(group);
   });
   group.on("dragend transformend", () => {
-    constrainGroupToStage(group);
+    boundsHelpers?.constrainGroupToStage(group);
     notifyFramesChanged();
   });
 
   layer.add(group);
   lastAddedMockup = group;
 
-  selectMockupGroup(group);
+  selectionManager?.selectMockupGroup(group);
   layer.batchDraw();
   notifyFramesChanged();
   return group;
@@ -366,11 +183,27 @@ export function initKonva() {
     borderDash: [4, 4],
   });
   layer.add(tr);
+  boundsHelpers = createKonvaBoundsHelpers({
+    getStage: () => stage,
+    getLastAddedMockup: () => lastAddedMockup,
+  });
+  selectionManager = createKonvaSelectionManager({
+    ui: UI,
+    appState: AppState,
+    getTransformer: () => tr,
+    getLayer: () => layer,
+  });
+  placeholderFactory = createKonvaPlaceholderFactory({
+    loadImage,
+    fileInput: UI.fileInput,
+    selectMockupGroup: (group) => selectionManager?.selectMockupGroup(group),
+  });
+  selectionManager.setSelectionButtonsDisabled(true);
 
   /* Stage-level event listeners */
   stage.on("click", (e) => {
     if (e.target === stage) {
-      clearSelection();
+      selectionManager?.clearSelection();
     }
   });
   stage.on("dragend transformend", () => {
@@ -409,7 +242,7 @@ export function resizeKonvaStage() {
         ? found.toArray()
         : Array.from(found || []);
     for (const group of groups) {
-      constrainGroupToStage(group);
+      boundsHelpers?.constrainGroupToStage(group);
     }
     layer.batchDraw();
   }
