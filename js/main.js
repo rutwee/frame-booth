@@ -61,6 +61,18 @@ function scheduleHistoryPushFromFramesChanged() {
     }, FRAMES_CHANGED_HISTORY_DEBOUNCE_MS);
 }
 
+function bindCanvasSizeCommitInput(inputEl) {
+    if (!inputEl) return;
+    const commit = () => Helpers.resizeDocument();
+    inputEl.addEventListener('change', commit);
+    inputEl.addEventListener('blur', commit);
+    inputEl.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        inputEl.blur();
+    });
+}
+
 async function addMockupByFrameId(frameId, options) {
     const previousFrameId = UI.frameSelect.value;
     try {
@@ -168,8 +180,8 @@ async function initializeApp() {
 
     // --- Bind event listeners ---
     UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
-    UI.docWidth.addEventListener('input', Helpers.resizeDocument);
-    UI.docHeight.addEventListener('input', Helpers.resizeDocument);
+    bindCanvasSizeCommitInput(UI.docWidth);
+    bindCanvasSizeCommitInput(UI.docHeight);
     UI.canvasEnabled?.addEventListener('change', () => layoutManager?.applyCanvasMode());
     UI.undoBtn?.addEventListener('click', () => historyManager?.undo());
     UI.redoBtn?.addEventListener('click', () => historyManager?.redo());
