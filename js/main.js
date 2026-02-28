@@ -92,6 +92,13 @@ function initResponsiveToolbarToggle() {
     if (!toolbar || !toggleBtn || !backdrop) return;
 
     const phoneMediaQuery = window.matchMedia('(max-width: 768px)');
+    const syncToggleButtonVisibility = () => {
+        const isPhone = phoneMediaQuery.matches;
+        toggleBtn.style.display = isPhone ? 'grid' : 'none';
+        if (!isPhone) {
+            setOpenState(false);
+        }
+    };
     const setOpenState = (open) => {
         const shouldOpen = !!open && phoneMediaQuery.matches;
         document.body.classList.toggle('toolbar-open', shouldOpen);
@@ -109,6 +116,7 @@ function initResponsiveToolbarToggle() {
     });
     const onMediaChange = (e) => {
         if (!e.matches) setOpenState(false);
+        syncToggleButtonVisibility();
     };
     if (typeof phoneMediaQuery.addEventListener === 'function') {
         phoneMediaQuery.addEventListener('change', onMediaChange);
@@ -116,6 +124,7 @@ function initResponsiveToolbarToggle() {
         phoneMediaQuery.addListener(onMediaChange);
     }
     setOpenState(false);
+    syncToggleButtonVisibility();
 }
 
 async function addMockupByFrameId(frameId, options) {
