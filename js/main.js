@@ -17,6 +17,8 @@ import { createHistoryManager } from './historyManager.js';
 import { createUploadManager } from './uploadManager.js';
 import { createFrameActions } from './frameActions.js';
 import { createLayoutManager } from './layoutManager.js';
+import { CANVAS_GRADIENTS, getDefaultCanvasGradientId } from './canvasGradients.js';
+import { createGradientEditor } from './gradientEditor.js';
 
 const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MIN_ZOOM = 0.1;
@@ -27,6 +29,7 @@ let historyManager = null;
 let uploadManager = null;
 let frameActions = null;
 let layoutManager = null;
+let gradientEditor = null;
 let framesChangedHistoryTimer = null;
 
 function clamp(value, min, max) {
@@ -137,6 +140,15 @@ async function addMockupByFrameId(frameId, options) {
     }
 }
 
+function populateCanvasGradientOptions() {
+    if (!UI.bgGradient) return;
+    UI.bgGradient.innerHTML = '';
+    CANVAS_GRADIENTS.forEach((preset) => {
+        UI.bgGradient.appendChild(new Option(preset.name, preset.id));
+    });
+    UI.bgGradient.value = getDefaultCanvasGradientId();
+}
+
 // ==========================================================================
 // INITIALIZATION - initializeApp()
 // ==========================================================================
@@ -159,6 +171,7 @@ async function initializeApp() {
     if (UI.frameSelect.options.length > 0) {
         UI.frameSelect.options[0].selected = true;
     }
+    populateCanvasGradientOptions();
     // responsive default canvas size for mobile
     if (window.innerWidth <= 768) { 
         UI.docWidth.value = 350; 
@@ -215,6 +228,16 @@ async function initializeApp() {
         redo: () => historyManager?.redo(),
         isTypingInFormField,
     });
+    gradientEditor = createGradientEditor({
+        ui: UI,
+        isTypingInFormField,
+        onChange: () => {
+            Helpers.updateMockupBackground();
+            updateKonvaCanvasBackground();
+            historyManager?.push();
+        },
+    });
+    gradientEditor.init();
     layoutManager.applyCanvasMode({ skipHistory: true });
     initExport();
     resetViewportTransform = initZoomPanControls({
@@ -242,7 +265,10 @@ async function initializeApp() {
     UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
     bindCanvasSizeCommitInput(UI.docWidth);
     bindCanvasSizeCommitInput(UI.docHeight);
-    UI.canvasEnabled?.addEventListener('change', () => layoutManager?.applyCanvasMode());
+    UI.canvasEnabled?.addEventListener('change', () => {
+        layoutManager?.applyCanvasMode();
+        gradientEditor?.syncVisibility?.();
+    });
     UI.undoBtn?.addEventListener('click', () => historyManager?.undo());
     UI.redoBtn?.addEventListener('click', () => historyManager?.redo());
     UI.resetBtn?.addEventListener('click', () => historyManager?.reset(() => resetViewportTransform?.()));

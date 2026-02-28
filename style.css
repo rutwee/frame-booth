@@ -552,6 +552,22 @@ select {
   text-align: left;
 }
 
+.canvas-color-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.gradient-select-wrapper {
+  width: 108px;
+}
+
+#canvasSettingsPanel #bgGradient {
+  font-size: 0.68rem;
+  padding-right: 18px;
+}
+
 input[type="color"] {
   width: 30px;
   height: 30px;
@@ -570,8 +586,115 @@ input[type="color"] {
 }
 
 #canvasSettingsPanel .color-group {
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 8px;
+}
+
+.gradient-custom-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gradient-custom-panel.is-disabled {
+  display: none;
+}
+
+.gradient-editor {
+  position: relative;
+  height: 34px;
+  margin-top: 10px;
+  cursor: crosshair;
+}
+
+.gradient-editor.is-readonly {
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+.gradient-bar {
+  position: relative;
+  height: 18px;
+  margin-top: 10px;
+  border: 1px solid #c8d1de;
+  border-radius: 999px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #e0f7ff 0%, #8ec5ff 100%);
+}
+
+.gradient-stops-layer {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 12px;
+  pointer-events: none;
+}
+
+.gradient-stop-handle {
+  --stop-color: #ffffff;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+  border: 1px solid #2d3748;
+  border-radius: 3px;
+  background: var(--stop-color);
+  cursor: ew-resize;
+  pointer-events: auto;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 4px rgba(15, 23, 42, 0.18);
+}
+
+.gradient-stop-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid #2d3748;
+}
+
+.gradient-stop-handle.is-selected {
+  outline: 2px solid #0d99ff;
+  outline-offset: 1px;
+}
+
+.gradient-stop-color-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gradient-angle-value {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: right;
+}
+
+.gradient-controls-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.gradient-controls-row label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.gradient-controls-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent-blue);
 }
 
 #canvasSettingsPanel .canvas-toggle-row label {
@@ -832,6 +955,10 @@ input[type="color"]::-webkit-color-swatch {
 
   .toolbar .select-wrapper {
     min-width: 0;
+  }
+
+  .gradient-select-wrapper {
+    width: 94px;
   }
 
   .corner-links {

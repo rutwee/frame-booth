@@ -1,8 +1,17 @@
 // ==================================================================
 //    HELPER UTILITIES
 // ==================================================================
-import { mockupArea, bgColor, docWidth, docHeight, canvasEnabled } from './ui.js';
+import {
+    mockupArea,
+    bgColor,
+    bgGradient,
+    customGradientData,
+    docWidth,
+    docHeight,
+    canvasEnabled,
+} from './ui.js';
 import { resizeKonvaStage } from './konvaSetup.js';
+import { getCanvasGradientCss, getDefaultCanvasGradientId, getDefaultCustomGradient } from './canvasGradients.js';
 
 /**
  * Loads an image from a given source URL.
@@ -32,10 +41,64 @@ export function isCanvasEnabled() {
     return !!canvasEnabled?.checked;
 }
 
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function normalizeHexColor(value, fallback) {
+    return /^#([0-9a-f]{6})$/i.test(String(value || '')) ? value : fallback;
+}
+
+export function getCurrentCustomGradientConfig() {
+    const defaults = getDefaultCustomGradient();
+    try {
+        const raw = JSON.parse(customGradientData?.value || '{}');
+        const rawStops = Array.isArray(raw?.stops) ? raw.stops : [];
+        const stops = rawStops
+            .filter((stop) => stop && typeof stop === 'object')
+            .map((stop) => {
+                const numericPosition = Number(stop.position);
+                return {
+                    position: Number.isFinite(numericPosition) ? clamp(numericPosition, 0, 1) : 0,
+                    color: normalizeHexColor(stop.color, '#ffffff'),
+                };
+            })
+            .sort((a, b) => a.position - b.position);
+
+        if (stops.length >= 2) {
+            const normalizedAngle = Number(raw.angle);
+            const angle = Number.isFinite(normalizedAngle)
+                ? ((normalizedAngle % 360) + 360) % 360
+                : defaults.angle;
+            return { angle, stops };
+        }
+    } catch {
+        // fall through to defaults
+    }
+
+    return {
+        angle: defaults.angle,
+        stops: [
+            { position: defaults.stops[0], color: defaults.stops[1] },
+            { position: defaults.stops[2], color: defaults.stops[3] },
+        ],
+    };
+}
+
 export function updateMockupBackground() {
     const enabled = isCanvasEnabled();
     mockupArea.classList.toggle('canvas-disabled', !enabled);
-    mockupArea.style.backgroundColor = enabled ? (bgColor.value || "#ffffff") : 'transparent';
+    if (!enabled) {
+        mockupArea.style.background = 'transparent';
+        return;
+    }
+
+    const gradientId = bgGradient?.value || getDefaultCanvasGradientId();
+    mockupArea.style.background = getCanvasGradientCss(
+        gradientId,
+        bgColor.value || '#ffffff',
+        getCurrentCustomGradientConfig(),
+    );
 }
 
 export function resizeDocument() {

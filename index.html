@@ -105,9 +105,27 @@
         </div>
         <div class="input-group color-group">
           <label for="bgColor">BG Color</label>
-          <div class="color-picker-wrapper">
-            <input type="color" id="bgColor" value="#ffffff">
+          <div class="canvas-color-controls">
+            <div class="select-wrapper gradient-select-wrapper">
+              <select id="bgGradient" title="Canvas gradient"></select>
+            </div>
+            <div class="color-picker-wrapper">
+              <input type="color" id="bgColor" value="#ffffff">
+            </div>
           </div>
+        </div>
+        <div id="gradientCustomPanel" class="gradient-custom-panel is-disabled">
+          <div id="gradientEditor" class="gradient-editor" title="Click to add gradient stops">
+            <div id="gradientBar" class="gradient-bar"></div>
+            <div id="gradientStopsLayer" class="gradient-stops-layer"></div>
+          </div>
+          <div class="gradient-controls-row">
+            <label for="gradientAngle">Angle</label>
+            <input type="range" id="gradientAngle" min="0" max="360" value="135" title="Gradient angle">
+            <span id="gradientAngleValue" class="gradient-angle-value">135deg</span>
+          </div>
+          <input type="color" id="gradientStopColor" class="gradient-stop-color-input" value="#8ec5ff">
+          <input type="hidden" id="customGradientData" value='{"angle":135,"stops":[{"id":"gs-1","position":0,"color":"#e0f7ff"},{"id":"gs-2","position":1,"color":"#8ec5ff"}]}'>
         </div>
       </div>
     </div>

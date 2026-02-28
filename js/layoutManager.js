@@ -113,6 +113,7 @@ export function createLayoutManager({
         const previousStageWidth = stage?.width() || 0;
         const previousStageHeight = stage?.height() || 0;
         const enabled = !!ui.canvasEnabled?.checked;
+        const customGradientEnabled = enabled && ui.bgGradient?.value === 'custom';
         const canvasCard = ui.canvasSettingsPanel?.closest('.toolbar-group');
         let aboveCard = canvasCard?.previousElementSibling || null;
         while (aboveCard && !aboveCard.classList?.contains('toolbar-group')) {
@@ -123,6 +124,11 @@ export function createLayoutManager({
         ui.docWidth.disabled = !enabled;
         ui.docHeight.disabled = !enabled;
         ui.bgColor.disabled = !enabled;
+        if (ui.bgGradient) ui.bgGradient.disabled = !enabled;
+        if (ui.gradientCustomPanel) ui.gradientCustomPanel.classList.toggle('is-disabled', !customGradientEnabled);
+        if (ui.gradientAngle) ui.gradientAngle.disabled = !customGradientEnabled;
+        if (ui.gradientStopColor) ui.gradientStopColor.disabled = !customGradientEnabled;
+        if (ui.gradientEditor) ui.gradientEditor.classList.toggle('is-readonly', !customGradientEnabled);
 
         if (canvasCard && hasCanvasModeInitialized && !options.skipAnimation) {
             canvasCard.classList.remove('canvas-settings-open', 'canvas-settings-close');

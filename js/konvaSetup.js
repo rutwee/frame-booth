@@ -4,10 +4,11 @@
 
 import * as UI from "./ui.js";
 import { frames, AppState } from "./state.js";
-import { loadImage, isCanvasEnabled } from "./helpers.js";
+import { loadImage, isCanvasEnabled, getCurrentCustomGradientConfig } from "./helpers.js";
 import { createKonvaBoundsHelpers } from "./konvaBounds.js";
 import { createKonvaPlaceholderFactory } from "./konvaPlaceholder.js";
 import { createKonvaSelectionManager } from "./konvaSelection.js";
+import { applyCanvasGradientToRect, getDefaultCanvasGradientId } from "./canvasGradients.js";
 
 // variables for the Konva stage and its components //
 let stage;
@@ -28,9 +29,14 @@ function notifyFramesChanged() {
 
 export function updateKonvaCanvasBackground() {
   if (!backgroundRect || !layer) return;
-  backgroundRect.fill(
-    isCanvasEnabled() ? UI.bgColor.value || "#fff" : "rgba(0,0,0,0)",
-  );
+  applyCanvasGradientToRect({
+    rect: backgroundRect,
+    stage,
+    enabled: isCanvasEnabled(),
+    gradientId: UI.bgGradient?.value || getDefaultCanvasGradientId(),
+    solidColor: UI.bgColor.value || "#ffffff",
+    customGradient: getCurrentCustomGradientConfig(),
+  });
   layer.batchDraw();
 }
 
@@ -184,10 +190,11 @@ export function initKonva() {
     y: 0,
     width: stage.width(),
     height: stage.height(),
-    fill: isCanvasEnabled() ? UI.bgColor.value || "#fff" : "rgba(0,0,0,0)",
+    fill: "rgba(0,0,0,0)",
     listening: false,
   });
   layer.add(backgroundRect);
+  updateKonvaCanvasBackground();
 
   tr = new Konva.Transformer({
     rotateEnabled: true,
@@ -253,6 +260,7 @@ export function resizeKonvaStage() {
       height: UI.mockupArea.offsetHeight,
     });
     backgroundRect.size(stage.size());
+    updateKonvaCanvasBackground();
     const found = stage.find(".mockup-group");
     const groups =
       typeof found?.toArray === "function"

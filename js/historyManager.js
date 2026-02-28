@@ -24,6 +24,8 @@ export function createHistoryManager({
             docWidth: +ui.docWidth.value || 900,
             docHeight: +ui.docHeight.value || 600,
             bgColor: ui.bgColor.value || '#ffffff',
+            bgGradient: ui.bgGradient?.value || 'solid',
+            customGradientData: ui.customGradientData?.value || '',
             mockups: getMockupGroups(stage).map(group => ({
                 frameId: group.getAttr('frameId'),
                 x: group.x(),
@@ -63,6 +65,9 @@ export function createHistoryManager({
             ui.docWidth.value = `${scene.docWidth ?? 900}`;
             ui.docHeight.value = `${scene.docHeight ?? 600}`;
             ui.bgColor.value = scene.bgColor || '#ffffff';
+            if (ui.bgGradient) ui.bgGradient.value = scene.bgGradient || 'solid';
+            if (ui.customGradientData) ui.customGradientData.value = scene.customGradientData || ui.customGradientData.value;
+            window.dispatchEvent(new Event('custom-gradient-sync'));
             applyCanvasMode({ skipAnimation: true, skipHistory: true });
 
             for (const group of getMockupGroups(stage)) group.destroy();
