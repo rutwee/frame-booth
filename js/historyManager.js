@@ -16,7 +16,9 @@ export function createHistoryManager({
     let redoHistory = [];
     let initialSceneSnapshot = null;
     let isRestoringHistory = false;
+    let lastHistorySignature = '';
 
+    // Build a serializable snapshot of current scene/canvas state.
     function serializeScene() {
         const stage = getStage();
         return {
@@ -36,22 +38,39 @@ export function createHistoryManager({
         };
     }
 
+    // Keep undo/redo buttons in sync with stack sizes.
     function updateHistoryButtons() {
         if (ui.undoBtn) ui.undoBtn.disabled = sceneHistory.length < 2;
         if (ui.redoBtn) ui.redoBtn.disabled = redoHistory.length < 1;
     }
 
+    // Compare snapshots cheaply with one serialized signature per push.
+    function getSceneSignature(scene) {
+        return JSON.stringify(scene);
+    }
+
+    function getLatestHistoryScene() {
+        return sceneHistory[sceneHistory.length - 1] || null;
+    }
+
+    function drawStage(stage) {
+        stage?.findOne('Layer')?.batchDraw();
+    }
+
+    // Push only meaningful scene changes into history.
     function push() {
         if (isRestoringHistory) return;
         const scene = serializeScene();
-        const prev = sceneHistory[sceneHistory.length - 1];
-        if (prev && JSON.stringify(prev) === JSON.stringify(scene)) return;
+        const sceneSignature = getSceneSignature(scene);
+        if (sceneSignature === lastHistorySignature) return;
         sceneHistory.push(scene);
         if (sceneHistory.length > historyLimit) sceneHistory.shift();
+        lastHistorySignature = sceneSignature;
         redoHistory = [];
         updateHistoryButtons();
     }
 
+    // Restore a full scene snapshot (canvas settings, frames, screenshots).
     async function restoreScene(scene, forHistory = false) {
         if (!scene) return;
         const stage = getStage();
@@ -68,7 +87,7 @@ export function createHistoryManager({
             for (const group of getMockupGroups(stage)) group.destroy();
             appState.setCurrentSelectedMockup(null);
             transformer?.nodes([]);
-            stage.findOne('Layer')?.batchDraw();
+            drawStage(stage);
 
             for (const snapshot of scene.mockups || []) {
                 if (!snapshot?.frameId) continue;
@@ -85,7 +104,7 @@ export function createHistoryManager({
 
             appState.setCurrentSelectedMockup(null);
             transformer?.nodes([]);
-            stage.findOne('Layer')?.batchDraw();
+            drawStage(stage);
             ensureResponsiveFit?.();
             updateDownloadSceneButtonState();
         } catch (error) {
@@ -97,34 +116,42 @@ export function createHistoryManager({
         }
     }
 
+    // Move one step back in history and keep redo stack updated.
     async function undo() {
         if (sceneHistory.length < 2) return;
         const current = sceneHistory.pop();
         if (current) redoHistory.push(current);
-        const previous = sceneHistory[sceneHistory.length - 1];
+        const previous = getLatestHistoryScene();
+        lastHistorySignature = previous ? getSceneSignature(previous) : '';
         updateHistoryButtons();
         await restoreScene(previous, true);
     }
 
+    // Re-apply one undone step.
     async function redo() {
         if (!redoHistory.length) return;
         const next = redoHistory.pop();
         if (!next) return;
         sceneHistory.push(next);
+        lastHistorySignature = getSceneSignature(next);
         updateHistoryButtons();
         await restoreScene(next, true);
     }
 
+    // Return to app startup snapshot and reset viewport transform.
     async function reset(runViewportReset) {
         if (!initialSceneSnapshot) return;
         runViewportReset?.();
         await restoreScene(initialSceneSnapshot);
     }
 
+    // Save baseline state captured after initial app bootstrap.
     function captureInitialScene() {
-        sceneHistory = [serializeScene()];
+        const initialScene = serializeScene();
+        sceneHistory = [initialScene];
         redoHistory = [];
-        initialSceneSnapshot = JSON.parse(JSON.stringify(sceneHistory[0]));
+        lastHistorySignature = getSceneSignature(initialScene);
+        initialSceneSnapshot = JSON.parse(lastHistorySignature);
         updateHistoryButtons();
     }
 

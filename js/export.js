@@ -1,6 +1,3 @@
-// ==========================================================================
-// EXPORT FUNCTIONALITY
-// ==========================================================================
 import {
     downloadBtn,
     downloadFrameBtn,
@@ -16,13 +13,12 @@ const SCENE_EXPORT_PIXEL_RATIO = 3.6;
 const FRAME_EXPORT_MAX_SCALE = 7;
 const FRAME_EXPORT_MAX_DIMENSION = 5400;
 
-// ==========================================================================
-// HELPERS
-// ==========================================================================
+// Reflect current canvas toggle state from UI.
 function isCanvasModeEnabled() {
     return !!canvasEnabled?.checked;
 }
 
+// Trigger a browser download from a generated data URL.
 function downloadURI(uri, name) {
     const link = document.createElement('a');
     link.download = name;
@@ -40,6 +36,7 @@ function getPrimaryLayer(stage) {
     return stage?.findOne('Layer') ?? null;
 }
 
+// Temporarily hide selection handles so exports are clean.
 function withTransformerHidden(stage, work) {
     const transformer = stage.findOne('Transformer');
     const layer = getPrimaryLayer(stage);
@@ -61,6 +58,7 @@ function withTransformerHidden(stage, work) {
     }
 }
 
+// Resolve scene export crop and quality options.
 function getSceneExportOptions(stage) {
     const nodes = collectMockupNodes(stage);
     const canvasEnabledNow = isCanvasModeEnabled();
@@ -77,6 +75,7 @@ function getSceneExportOptions(stage) {
     };
 }
 
+// Read the most accurate pixel size for image/video-like sources.
 function getImagePixelSize(image) {
     if (!image) return { width: 0, height: 0 };
     return {
@@ -85,6 +84,7 @@ function getImagePixelSize(image) {
     };
 }
 
+// Choose export scale from frame and screenshot source resolution.
 function getBestFrameExportScale(selectedNode) {
     let bestScale = 1;
 
@@ -116,16 +116,17 @@ function getBestFrameExportScale(selectedNode) {
     return Math.min(FRAME_EXPORT_MAX_SCALE, Math.max(1, bestScale));
 }
 
+// Keep scene export button state aligned with frame count.
 export function updateDownloadSceneButtonState() {
+    if (!downloadBtn) return;
     const stage = getStage();
     const frameCount = collectMockupNodes(stage).length;
     downloadBtn.disabled = !shouldEnableSceneDownload(isCanvasModeEnabled(), frameCount);
 }
 
-// ==========================================================================
-// EXPORT BUTTON - initExport()
-// ==========================================================================
+// Bind scene/frame export actions.
 export function initExport() {
+    if (!downloadBtn || !downloadFrameBtn) return;
     downloadBtn.addEventListener('click', () => {
         const stage = getStage();
         if (!stage) return;

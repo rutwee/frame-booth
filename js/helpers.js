@@ -1,14 +1,7 @@
-// ==================================================================
-//    HELPER UTILITIES
-// ==================================================================
 import { mockupArea, bgColor, docWidth, docHeight, canvasEnabled } from './ui.js';
 import { resizeKonvaStage } from './konvaSetup.js';
 
-/**
- * Loads an image from a given source URL.
- * @param {string} src The URL of the image to load.
- * @returns {Promise<HTMLImageElement>} A promise that resolves with the loaded image element.
- */
+// Load an image source into an HTMLImageElement.
 export const loadImage = src => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -16,11 +9,7 @@ export const loadImage = src => new Promise((resolve, reject) => {
     img.src = src;
 });
 
-/**
- * Reads a local file (e.g., from an <input type="file">) as a Data URL.
- * @param {File} file The file object to read.
- * @returns {Promise<string>} A promise that resolves with the file's content as a Data URL string.
- */
+// Convert a local file into a data URL string.
 export const readFileAsDataURL = file => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -32,31 +21,39 @@ export function isCanvasEnabled() {
     return !!canvasEnabled?.checked;
 }
 
+// Apply transparent/solid workspace background based on canvas mode.
 export function updateMockupBackground() {
     const enabled = isCanvasEnabled();
     mockupArea.classList.toggle('canvas-disabled', !enabled);
     mockupArea.style.backgroundColor = enabled ? (bgColor.value || "#ffffff") : 'transparent';
 }
 
+// Measure parent usable size after padding.
+function getParentInnerSize() {
+    const parent = mockupArea.parentElement;
+    if (!parent) {
+        return { width: mockupArea.offsetWidth || 900, height: mockupArea.offsetHeight || 600 };
+    }
+    const styles = getComputedStyle(parent);
+    const padX = parseFloat(styles.paddingLeft || 0) + parseFloat(styles.paddingRight || 0);
+    const padY = parseFloat(styles.paddingTop || 0) + parseFloat(styles.paddingBottom || 0);
+    return {
+        width: Math.max(1, parent.clientWidth - padX),
+        height: Math.max(1, parent.clientHeight - padY),
+    };
+}
+
+// Resize mockup area to canvas size or to full preview area in canvas-off mode.
 export function resizeDocument() {
     const enabled = isCanvasEnabled();
-    let w;
-    let h;
-
     if (enabled) {
-        w = +docWidth.value || 900;
-        h = +docHeight.value || 600;
+        mockupArea.style.width = `${+docWidth.value || 900}px`;
+        mockupArea.style.height = `${+docHeight.value || 600}px`;
     } else {
-        const parent = mockupArea.parentElement;
-        const styles = parent ? getComputedStyle(parent) : null;
-        const padX = (parseFloat(styles?.paddingLeft || 0) + parseFloat(styles?.paddingRight || 0));
-        const padY = (parseFloat(styles?.paddingTop || 0) + parseFloat(styles?.paddingBottom || 0));
-        w = Math.max(1, (parent?.clientWidth || mockupArea.offsetWidth || 900) - padX);
-        h = Math.max(1, (parent?.clientHeight || mockupArea.offsetHeight || 600) - padY);
+        const { width, height } = getParentInnerSize();
+        mockupArea.style.width = `${width}px`;
+        mockupArea.style.height = `${height}px`;
     }
 
-    mockupArea.style.width = `${w}px`;
-    mockupArea.style.height = `${h}px`;
-    
     resizeKonvaStage?.();
 }

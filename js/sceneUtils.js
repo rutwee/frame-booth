@@ -69,6 +69,7 @@ export function getContentBounds(nodes) {
  * @returns {boolean}
  */
 export function shouldEnableSceneDownload(canvasEnabled, frameCount) {
+    void canvasEnabled;
     return frameCount > 0;
 }
 

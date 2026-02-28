@@ -1,12 +1,9 @@
-// ==========================================================================
-// APPLICATION ENTRY POINT
-// ==========================================================================
-
 import * as UI from './ui.js';
 import * as Helpers from './helpers.js';
 import { AppState, frames } from './state.js';
 import { initKonva, addMockup, lastAddedMockup, tr, updateKonvaCanvasBackground } from './konvaSetup.js';
 import { initExport, updateDownloadSceneButtonState } from './export.js';
+import { collectMockupNodes } from './sceneUtils.js';
 import {
     detectIPhoneScreenshotProfile,
     getTargetIslandLocalRect,
@@ -22,6 +19,7 @@ const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 const FRAMES_CHANGED_HISTORY_DEBOUNCE_MS = 80;
+const PHONE_MEDIA_QUERY = '(max-width: 768px)';
 let resetViewportTransform = null;
 let historyManager = null;
 let uploadManager = null;
@@ -45,16 +43,11 @@ function getStage() {
     return Konva.stages?.[0] || null;
 }
 
-function getMockupGroups(stage) {
-    if (!stage?.find) return [];
-    const found = stage.find('.mockup-group');
-    return typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
-}
-
+// Ensure users never land on an empty workspace if initial add fails.
 async function ensureInitialFrameVisible() {
     const stage = getStage();
     if (!stage) return;
-    if (getMockupGroups(stage).length > 0) return;
+    if (collectMockupNodes(stage).length > 0) return;
     try {
         await addMockup();
     } catch (error) {
@@ -73,6 +66,7 @@ function scheduleHistoryPushFromFramesChanged() {
     }, FRAMES_CHANGED_HISTORY_DEBOUNCE_MS);
 }
 
+// Commit canvas size updates only after confirmed input actions.
 function bindCanvasSizeCommitInput(inputEl) {
     if (!inputEl) return;
     const commit = () => Helpers.resizeDocument();
@@ -85,25 +79,24 @@ function bindCanvasSizeCommitInput(inputEl) {
     });
 }
 
+// Keep mobile toolbar state in sync across viewport changes.
 function initResponsiveToolbarToggle() {
-    const toolbar = document.querySelector('#toolbarPanel');
     const toggleBtn = document.querySelector('#toolbarToggleBtn');
     const backdrop = document.querySelector('#toolbarBackdrop');
-    if (!toolbar || !toggleBtn || !backdrop) return;
+    if (!toggleBtn || !backdrop) return;
 
-    const phoneMediaQuery = window.matchMedia('(max-width: 768px)');
-    const syncToggleButtonVisibility = () => {
-        const isPhone = phoneMediaQuery.matches;
-        toggleBtn.style.display = isPhone ? 'grid' : 'none';
-        if (!isPhone) {
-            setOpenState(false);
-        }
-    };
+    const phoneMediaQuery = window.matchMedia(PHONE_MEDIA_QUERY);
+
     const setOpenState = (open) => {
         const shouldOpen = !!open && phoneMediaQuery.matches;
         document.body.classList.toggle('toolbar-open', shouldOpen);
         toggleBtn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
         backdrop.hidden = !shouldOpen;
+    };
+    const syncToggleButtonVisibility = () => {
+        const isPhone = phoneMediaQuery.matches;
+        toggleBtn.hidden = !isPhone;
+        if (!isPhone) setOpenState(false);
     };
 
     toggleBtn.addEventListener('click', () => {
@@ -123,10 +116,12 @@ function initResponsiveToolbarToggle() {
     } else if (typeof phoneMediaQuery.addListener === 'function') {
         phoneMediaQuery.addListener(onMediaChange);
     }
+    window.addEventListener('resize', syncToggleButtonVisibility);
     setOpenState(false);
     syncToggleButtonVisibility();
 }
 
+// Add a mockup using a specific frame id while restoring prior UI selection.
 async function addMockupByFrameId(frameId, options) {
     const previousFrameId = UI.frameSelect.value;
     try {
@@ -137,41 +132,39 @@ async function addMockupByFrameId(frameId, options) {
     }
 }
 
-// ==========================================================================
-// INITIALIZATION - initializeApp()
-// ==========================================================================
-async function initializeApp() {
-    // --- initial UI setup ---
+// Build frame dropdown grouped by device family.
+function populateFrameSelect() {
     const groupedFrames = frames.reduce((acc, frame) => {
-        (acc[frame.group] = acc[frame.group] || []).push(frame);
+        (acc[frame.group] ||= []).push(frame);
         return acc;
     }, {});
 
-    Object.keys(groupedFrames).forEach(groupName => {
+    for (const [groupName, frameList] of Object.entries(groupedFrames)) {
         const optgroup = document.createElement('optgroup');
         optgroup.label = groupName;
-        groupedFrames[groupName].forEach(frame => {
-            const option = new Option(frame.name, frame.id);
-            optgroup.appendChild(option);
-        });
+        for (const frame of frameList) {
+            optgroup.appendChild(new Option(frame.name, frame.id));
+        }
         UI.frameSelect.appendChild(optgroup);
-    });
-    if (UI.frameSelect.options.length > 0) {
-        UI.frameSelect.options[0].selected = true;
     }
-    // responsive default canvas size for mobile
-    if (window.innerWidth <= 768) { 
-        UI.docWidth.value = 350; 
+    if (UI.frameSelect.options.length) UI.frameSelect.options[0].selected = true;
+}
+
+// Wire up app modules and event handlers.
+async function initializeApp() {
+    populateFrameSelect();
+
+    // Use tighter default canvas dimensions on phones.
+    if (window.matchMedia(PHONE_MEDIA_QUERY).matches) {
+        UI.docWidth.value = 350;
         UI.docHeight.value = 600;
     }
-    if (UI.canvasEnabled) {
-        UI.canvasEnabled.checked = false;
-    }
+    if (UI.canvasEnabled) UI.canvasEnabled.checked = false;
 
     Helpers.resizeDocument();
     initResponsiveToolbarToggle();
 
-    // --- Initialize modules ---
+    // Initialize core modules.
     initKonva();
     layoutManager = createLayoutManager({
         ui: UI,
@@ -189,7 +182,7 @@ async function initializeApp() {
         addMockupByFrameId,
         applyCanvasMode: (options) => layoutManager?.applyCanvasMode(options),
         getStage,
-        getMockupGroups,
+        getMockupGroups: collectMockupNodes,
         placeImageInMockup,
         updateDownloadSceneButtonState,
         ensureResponsiveFit: () => layoutManager?.fitMockupsToViewport?.(),
@@ -226,7 +219,7 @@ async function initializeApp() {
     });
     uploadManager.initDragAndDropUpload();
 
-    // --- Add the default frame ---
+    // Seed the workspace with one frame.
     try {
         await addMockup();
     } catch (error) {
@@ -238,7 +231,7 @@ async function initializeApp() {
     }, 120);
     historyManager.captureInitialScene();
 
-    // --- Bind event listeners ---
+    // Bind UI and scene events.
     UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
     bindCanvasSizeCommitInput(UI.docWidth);
     bindCanvasSizeCommitInput(UI.docHeight);
@@ -259,16 +252,13 @@ async function initializeApp() {
     getStage()?.on('dragend transformend', () => historyManager?.push());
     layoutManager.bindWindowResize();
 
-    // --- Start background rendering ---
+    // Paint initial workspace background.
     layoutManager.renderBackground();
 }
 
 window.addEventListener('DOMContentLoaded', initializeApp);
 
-
-// ==========================================================================
-// IMAGE PLACING - placeImageInMockup()
-// ==========================================================================
+// Place a screenshot into the selected frame's screen mask.
 export function placeImageInMockup(img, mockup) {
     mockup.find('.upload-placeholder').forEach(node => node.destroy());
     mockup.find('.screenshot-container').forEach(node => node.destroy());

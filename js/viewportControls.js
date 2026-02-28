@@ -17,10 +17,12 @@ export function initZoomPanControls({
     let lastCenter = null;
     let isPanningWithTouch = false;
 
+    // Apply current pan/zoom state to workspace transform.
     function applyTransform() {
         mockupArea.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
     }
 
+    // Restore default zoom and pan.
     function resetTransform() {
         scale = 1;
         panX = 0;
@@ -28,13 +30,32 @@ export function initZoomPanControls({
         applyTransform();
     }
 
+    // Zoom around the pointer so content stays under cursor/fingers.
+    function zoomAround(clientX, clientY, nextScale) {
+        const oldScale = scale;
+        const clampedScale = clampZoom(nextScale);
+        if (clampedScale === oldScale) return;
+
+        const rect = mockupArea.getBoundingClientRect();
+        const localX = clientX - rect.left;
+        const localY = clientY - rect.top;
+        const scaleRatio = clampedScale / oldScale;
+
+        panX -= (localX - panX) * (scaleRatio - 1);
+        panY -= (localY - panY) * (scaleRatio - 1);
+        scale = clampedScale;
+    }
+
+    // Mouse wheel: pan normally, zoom when Ctrl/Cmd is held.
     previewWrap.addEventListener('wheel', e => {
         e.preventDefault();
         if (e.ctrlKey || e.metaKey) {
-            const zoomFactor = 1.01;
-            const direction = e.deltaY < 0 ? 1 : -1;
-            const newScale = direction > 0 ? scale * zoomFactor : scale / zoomFactor;
-            scale = clampZoom(newScale);
+            const zoomFactor = 1.06;
+            zoomAround(
+                e.clientX,
+                e.clientY,
+                e.deltaY < 0 ? scale * zoomFactor : scale / zoomFactor
+            );
         } else {
             panX -= e.deltaX;
             panY -= e.deltaY;
@@ -42,6 +63,7 @@ export function initZoomPanControls({
         applyTransform();
     }, { passive: false });
 
+    // Keyboard support for hand-tool pan and quick reset.
     window.addEventListener('keydown', e => {
         if (isTypingInFormField()) return;
         if (e.key === ' ' && !isSpaceDown) {
@@ -62,6 +84,7 @@ export function initZoomPanControls({
         }
     });
 
+    // Space-drag panning with mouse.
     previewWrap.addEventListener('mousedown', e => {
         if (!isSpaceDown) return;
         isPanningWithSpace = true;
@@ -83,6 +106,7 @@ export function initZoomPanControls({
         previewWrap.style.cursor = isSpaceDown ? 'grab' : 'default';
     });
 
+    // Touch gestures: one-finger pan, two-finger pinch zoom.
     previewWrap.addEventListener('touchstart', e => {
         if (e.target.closest('.toolbar')) return;
         e.preventDefault();
@@ -151,15 +175,7 @@ export function initZoomPanControls({
         }
 
         const scaleFactor = newDist / lastDist;
-        const oldScale = scale;
-        scale = clampZoom(scale * scaleFactor);
-
-        const rect = mockupArea.getBoundingClientRect();
-        const zoomOriginX = lastCenter.x - rect.left;
-        const zoomOriginY = lastCenter.y - rect.top;
-
-        panX -= (zoomOriginX - panX) * (scale / oldScale - 1);
-        panY -= (zoomOriginY - panY) * (scale / oldScale - 1);
+        zoomAround(lastCenter.x, lastCenter.y, scale * scaleFactor);
         panX += newCenter.x - lastCenter.x;
         panY += newCenter.y - lastCenter.y;
 

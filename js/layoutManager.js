@@ -1,3 +1,5 @@
+import { collectMockupNodes, getContentBounds } from './sceneUtils.js';
+
 export function createLayoutManager({
     ui,
     helpers,
@@ -8,51 +10,31 @@ export function createLayoutManager({
 } = {}) {
     let hasCanvasModeInitialized = false;
     const FIT_PADDING = 16;
+    const SMALL_SCREEN_MAX_WIDTH = 1024;
+    const drawGroupsLayer = (groups) => groups[0]?.getLayer?.()?.batchDraw();
 
-    function getMockupGroups(stage) {
-        if (!stage?.find) return [];
-        const found = stage.find('.mockup-group');
-        return typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
-    }
-
+    // Keep existing frame positions visually centered when the stage size changes.
     function offsetMockupsForStageResize(previousStageWidth, previousStageHeight) {
         const stage = getStage?.();
-        if (!stage?.find || !previousStageWidth || !previousStageHeight) return;
+        if (!stage || !previousStageWidth || !previousStageHeight) return;
 
         const dx = (stage.width() - previousStageWidth) / 2;
         const dy = (stage.height() - previousStageHeight) / 2;
         if (!dx && !dy) return;
 
-        const groups = getMockupGroups(stage);
+        const groups = collectMockupNodes(stage);
         if (!groups.length) return;
 
         for (const group of groups) {
             group.x(group.x() + dx);
             group.y(group.y() + dy);
         }
-        groups[0].getLayer()?.batchDraw();
+        drawGroupsLayer(groups);
     }
 
-    function getBounds(nodes) {
-        if (!nodes?.length) return null;
-        let minX = Number.POSITIVE_INFINITY;
-        let minY = Number.POSITIVE_INFINITY;
-        let maxX = Number.NEGATIVE_INFINITY;
-        let maxY = Number.NEGATIVE_INFINITY;
-        for (const node of nodes) {
-            const rect = node?.getClientRect?.();
-            if (!rect) continue;
-            minX = Math.min(minX, rect.x);
-            minY = Math.min(minY, rect.y);
-            maxX = Math.max(maxX, rect.x + rect.width);
-            maxY = Math.max(maxY, rect.y + rect.height);
-        }
-        if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
-        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-    }
-
+    // Nudge all frames inside a small viewport without changing relative layout.
     function nudgeToFit(groups, stageWidth, stageHeight) {
-        const bounds = getBounds(groups);
+        const bounds = getContentBounds(groups);
         if (!bounds) return;
         let dx = 0;
         let dy = 0;
@@ -72,15 +54,16 @@ export function createLayoutManager({
         }
     }
 
+    // Scale+reposition frames only on tablet/phone-sized viewports.
     function fitMockupsToStageOnSmallScreens() {
         const stage = getStage?.();
-        if (!stage || window.innerWidth > 1024) return;
-        const groups = getMockupGroups(stage);
+        if (!stage || window.innerWidth > SMALL_SCREEN_MAX_WIDTH) return;
+        const groups = collectMockupNodes(stage);
         if (!groups.length) return;
 
         const stageWidth = stage.width();
         const stageHeight = stage.height();
-        const bounds = getBounds(groups);
+        const bounds = getContentBounds(groups);
         if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
 
         const availableWidth = Math.max(1, stageWidth - FIT_PADDING * 2);
@@ -88,7 +71,7 @@ export function createLayoutManager({
         const fitScale = Math.min(1, availableWidth / bounds.width, availableHeight / bounds.height);
         if (fitScale >= 1) {
             nudgeToFit(groups, stageWidth, stageHeight);
-            groups[0].getLayer()?.batchDraw();
+            drawGroupsLayer(groups);
             return;
         }
 
@@ -105,9 +88,10 @@ export function createLayoutManager({
             });
         }
         nudgeToFit(groups, stageWidth, stageHeight);
-        groups[0].getLayer()?.batchDraw();
+        drawGroupsLayer(groups);
     }
 
+    // Toggle canvas settings and keep scene state/layout synchronized.
     function applyCanvasMode(options = {}) {
         const stage = getStage?.();
         const previousStageWidth = stage?.width() || 0;
@@ -146,6 +130,7 @@ export function createLayoutManager({
         if (!options.skipHistory) onHistoryPush?.();
     }
 
+    // Paint the static workspace background grid canvas.
     function renderBackground() {
         const ctx = ui.canvasEl?.getContext('2d');
         if (!ctx) return;
@@ -165,6 +150,7 @@ export function createLayoutManager({
         ctx.fillRect(0, 0, w, h);
     }
 
+    // Recompute stage/canvas layout after viewport changes.
     function handleWindowResize() {
         requestAnimationFrame(() => {
             const stage = getStage?.();
@@ -177,6 +163,7 @@ export function createLayoutManager({
         });
     }
 
+    // Attach the resize listener once during init.
     function bindWindowResize() {
         window.addEventListener('resize', handleWindowResize);
     }

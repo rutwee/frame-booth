@@ -46,6 +46,10 @@
   font-family: "Manrope", sans-serif;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   width: 100vw;

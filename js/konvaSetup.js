@@ -1,15 +1,12 @@
-// ==========================================================================
-// KONVA.JS INITIALIZATION & SETUP
-// ==========================================================================
-
 import * as UI from "./ui.js";
 import { frames, AppState } from "./state.js";
 import { loadImage, isCanvasEnabled } from "./helpers.js";
 import { createKonvaBoundsHelpers } from "./konvaBounds.js";
 import { createKonvaPlaceholderFactory } from "./konvaPlaceholder.js";
 import { createKonvaSelectionManager } from "./konvaSelection.js";
+import { collectMockupNodes } from "./sceneUtils.js";
 
-// variables for the Konva stage and its components //
+// Shared Konva runtime references.
 let stage;
 let layer;
 export let tr;
@@ -21,11 +18,14 @@ let placeholderFactory;
 let selectionManager;
 
 const EDITABLE_TAGS = ["INPUT", "SELECT", "TEXTAREA"];
+const MAX_ORIGINAL_FRAME_HEIGHT = Math.max(...frames.map((f) => f.originalHeight || 0), 1);
 
+// Notify app modules that scene content changed.
 function notifyFramesChanged() {
   window.dispatchEvent(new Event("frames-changed"));
 }
 
+// Keep Konva background rectangle in sync with canvas toggle/color.
 export function updateKonvaCanvasBackground() {
   if (!backgroundRect || !layer) return;
   backgroundRect.fill(
@@ -34,25 +34,13 @@ export function updateKonvaCanvasBackground() {
   layer.batchDraw();
 }
 
-/**
- * Creates and adds an "Upload an Image" placeholder to a mockup group.
- * The placeholder is clickable and opens the file input dialog.
- * @param {Konva.Group} group The parent mockup group.
- * @param {object} frameData The data object for the frame.
- * @param {number} scale The calculated scale of the frame.
- */
-
-// ==========================================================================
-// PLACEHOLDER - createAndAddPlaceholder()
-// ==========================================================================
+// Add an upload placeholder inside a frame screen mask.
 async function createAndAddPlaceholder(group, frameData, scale) {
   if (!placeholderFactory) return;
   await placeholderFactory.createAndAddPlaceholder(group, frameData, scale);
 }
 
-// ==========================================================================
-// DELETE MOCKUP - deleteSelectedMockup()
-// ==========================================================================
+// Delete screenshot content first; delete frame only when screenshot is absent.
 async function deleteSelectedMockup() {
   if (!tr || !layer) return;
 
@@ -78,6 +66,7 @@ async function deleteSelectedMockup() {
       frameNode.moveToTop();
     }
     layer.batchDraw();
+    notifyFramesChanged();
     return;
   }
 
@@ -86,9 +75,7 @@ async function deleteSelectedMockup() {
   notifyFramesChanged();
 }
 
-// ==========================================================================
-// ADD MOCKUP - addMockup()
-// ==========================================================================
+// Add a new frame mockup and optionally restore a saved transform state.
 export async function addMockup(options = {}) {
   if (!stage || !layer || !tr) return null;
   const {
@@ -100,14 +87,10 @@ export async function addMockup(options = {}) {
   const frameData = frames.find((f) => f.id === UI.frameSelect.value);
   if (!frameData) return null;
 
-  /* Calculate a dynamic size for the new frame to fit nicely on the canvas */
+  // Normalize frame sizes so different devices are visually balanced.
   const maxCanvasHeight = initialStageHeight * 0.8;
-  const maxOriginalHeight = Math.max(
-    ...frames.map((f) => f.originalHeight || 0),
-    1,
-  );
   const desiredHeight =
-    (frameData.originalHeight / maxOriginalHeight) * maxCanvasHeight;
+    (frameData.originalHeight / MAX_ORIGINAL_FRAME_HEIGHT) * maxCanvasHeight;
 
   const frameImg = await loadImage(frameData.src);
   const scale = desiredHeight / frameImg.height;
@@ -165,9 +148,7 @@ export async function addMockup(options = {}) {
   return group;
 }
 
-// ==========================================================================
-// KONVA INITIALIZATION - initKonva()
-// ==========================================================================
+// Initialize stage, layer, transformer, selection and keyboard handlers.
 export function initKonva() {
   stage = new Konva.Stage({
     container: "mockupArea",
@@ -217,7 +198,7 @@ export function initKonva() {
   });
   selectionManager.setSelectionButtonsDisabled(true);
 
-  /* Stage-level event listeners */
+  // Handle stage-level selection and transform notifications.
   stage.on("click", (e) => {
     if (e.target === stage) {
       selectionManager?.clearSelection();
@@ -227,7 +208,7 @@ export function initKonva() {
     notifyFramesChanged();
   });
 
-  /* UI event listeners tied to Konva actions */
+  // Bind deletion and color changes to Konva layer updates.
   UI.bgColor.addEventListener("input", () => {
     updateKonvaCanvasBackground();
   });
@@ -243,9 +224,7 @@ export function initKonva() {
   });
 }
 
-// ==========================================================================
-// KONVA RESIZE - resizeKonvaStage()
-// ==========================================================================
+// Resize stage to match mockup area and reapply bounds constraints.
 export function resizeKonvaStage() {
   if (stage && backgroundRect && layer) {
     stage.size({
@@ -253,11 +232,7 @@ export function resizeKonvaStage() {
       height: UI.mockupArea.offsetHeight,
     });
     backgroundRect.size(stage.size());
-    const found = stage.find(".mockup-group");
-    const groups =
-      typeof found?.toArray === "function"
-        ? found.toArray()
-        : Array.from(found || []);
+    const groups = collectMockupNodes(stage);
     for (const group of groups) {
       boundsHelpers?.constrainGroupToStage(group);
     }

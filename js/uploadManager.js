@@ -1,3 +1,5 @@
+import { collectMockupNodes } from './sceneUtils.js';
+
 export function createUploadManager({
     ui,
     appState,
@@ -8,8 +10,9 @@ export function createUploadManager({
     onSceneChanged,
     maxUploadSizeBytes = 8 * 1024 * 1024,
 }) {
+    // Validate user-selected image files before reading.
     function getImageValidationError(file) {
-        if (!file.type.startsWith('image/')) {
+        if (!file?.type?.startsWith('image/')) {
             return 'Please select a valid image file.';
         }
         if (file.size > maxUploadSizeBytes) {
@@ -18,6 +21,7 @@ export function createUploadManager({
         return null;
     }
 
+    // Read and place an image into the target mockup.
     async function loadAndPlaceImage(file, targetMockup) {
         const validationError = getImageValidationError(file);
         if (validationError) {
@@ -34,6 +38,7 @@ export function createUploadManager({
         onSceneChanged?.();
     }
 
+    // Handle file input uploads.
     async function handleImageUpload(e) {
         const file = e.target.files?.[0];
         if (!file) {
@@ -52,33 +57,42 @@ export function createUploadManager({
         }
     }
 
-    function getMockupAtClientPoint(clientX, clientY) {
-        const stage = getStage?.();
-        if (!stage) return null;
-
+    // Convert viewport pointer coordinates into stage-local coordinates.
+    function getStagePoint(stage, clientX, clientY) {
         const stageBox = stage.container().getBoundingClientRect();
         const scaleX = stageBox.width / stage.width() || 1;
         const scaleY = stageBox.height / stage.height() || 1;
-        const point = {
+        return {
             x: (clientX - stageBox.left) / scaleX,
             y: (clientY - stageBox.top) / scaleY,
         };
+    }
+
+    function pointInRect(point, rect) {
+        return point.x >= rect.x &&
+            point.x <= rect.x + rect.width &&
+            point.y >= rect.y &&
+            point.y <= rect.y + rect.height;
+    }
+
+    // Resolve which mockup sits under the current pointer.
+    function getMockupAtClientPoint(clientX, clientY) {
+        const stage = getStage?.();
+        if (!stage) return null;
+        const point = getStagePoint(stage, clientX, clientY);
 
         const shape = stage.getIntersection(point);
         const directMockup = shape?.findAncestor?.('.mockup-group');
         if (directMockup) return directMockup;
 
-        const found = stage.find('.mockup-group');
-        const groups = typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
+        const groups = collectMockupNodes(stage);
         for (let i = groups.length - 1; i >= 0; i -= 1) {
-            const r = groups[i].getClientRect();
-            if (point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height) {
-                return groups[i];
-            }
+            if (pointInRect(point, groups[i].getClientRect())) return groups[i];
         }
         return null;
     }
 
+    // Wire drag/drop upload onto the workspace area.
     function initDragAndDropUpload() {
         ui.mockupArea.addEventListener('dragover', e => {
             e.preventDefault();
