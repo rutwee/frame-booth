@@ -7,6 +7,7 @@ export function createLayoutManager({
     onHistoryPush,
 } = {}) {
     let hasCanvasModeInitialized = false;
+    const FIT_PADDING = 16;
 
     function getMockupGroups(stage) {
         if (!stage?.find) return [];
@@ -29,6 +30,81 @@ export function createLayoutManager({
             group.x(group.x() + dx);
             group.y(group.y() + dy);
         }
+        groups[0].getLayer()?.batchDraw();
+    }
+
+    function getBounds(nodes) {
+        if (!nodes?.length) return null;
+        let minX = Number.POSITIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+        for (const node of nodes) {
+            const rect = node?.getClientRect?.();
+            if (!rect) continue;
+            minX = Math.min(minX, rect.x);
+            minY = Math.min(minY, rect.y);
+            maxX = Math.max(maxX, rect.x + rect.width);
+            maxY = Math.max(maxY, rect.y + rect.height);
+        }
+        if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    }
+
+    function nudgeToFit(groups, stageWidth, stageHeight) {
+        const bounds = getBounds(groups);
+        if (!bounds) return;
+        let dx = 0;
+        let dy = 0;
+        if (bounds.x < FIT_PADDING) {
+            dx = FIT_PADDING - bounds.x;
+        } else if (bounds.x + bounds.width > stageWidth - FIT_PADDING) {
+            dx = stageWidth - FIT_PADDING - (bounds.x + bounds.width);
+        }
+        if (bounds.y < FIT_PADDING) {
+            dy = FIT_PADDING - bounds.y;
+        } else if (bounds.y + bounds.height > stageHeight - FIT_PADDING) {
+            dy = stageHeight - FIT_PADDING - (bounds.y + bounds.height);
+        }
+        if (!dx && !dy) return;
+        for (const group of groups) {
+            group.position({ x: group.x() + dx, y: group.y() + dy });
+        }
+    }
+
+    function fitMockupsToStageOnSmallScreens() {
+        const stage = getStage?.();
+        if (!stage || window.innerWidth > 1024) return;
+        const groups = getMockupGroups(stage);
+        if (!groups.length) return;
+
+        const stageWidth = stage.width();
+        const stageHeight = stage.height();
+        const bounds = getBounds(groups);
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+
+        const availableWidth = Math.max(1, stageWidth - FIT_PADDING * 2);
+        const availableHeight = Math.max(1, stageHeight - FIT_PADDING * 2);
+        const fitScale = Math.min(1, availableWidth / bounds.width, availableHeight / bounds.height);
+        if (fitScale >= 1) {
+            nudgeToFit(groups, stageWidth, stageHeight);
+            groups[0].getLayer()?.batchDraw();
+            return;
+        }
+
+        const centerX = bounds.x + bounds.width / 2;
+        const centerY = bounds.y + bounds.height / 2;
+        for (const group of groups) {
+            group.position({
+                x: centerX + (group.x() - centerX) * fitScale,
+                y: centerY + (group.y() - centerY) * fitScale,
+            });
+            group.scale({
+                x: group.scaleX() * fitScale,
+                y: group.scaleY() * fitScale,
+            });
+        }
+        nudgeToFit(groups, stageWidth, stageHeight);
         groups[0].getLayer()?.batchDraw();
     }
 
@@ -62,6 +138,7 @@ export function createLayoutManager({
 
         helpers.resizeDocument();
         offsetMockupsForStageResize(previousStageWidth, previousStageHeight);
+        fitMockupsToStageOnSmallScreens();
         helpers.updateMockupBackground();
         updateKonvaCanvasBackground?.();
         updateDownloadSceneButtonState?.();
@@ -95,6 +172,7 @@ export function createLayoutManager({
             const previousStageHeight = stage?.height() || 0;
             helpers.resizeDocument();
             offsetMockupsForStageResize(previousStageWidth, previousStageHeight);
+            fitMockupsToStageOnSmallScreens();
             renderBackground();
         });
     }
@@ -107,5 +185,6 @@ export function createLayoutManager({
         applyCanvasMode,
         renderBackground,
         bindWindowResize,
+        fitMockupsToViewport: fitMockupsToStageOnSmallScreens,
     };
 }

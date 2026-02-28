@@ -36,7 +36,7 @@
   --accent-orange-dark: #9f6d2e;
 
   --top-bar-height: 54px;
-  --sidebar-width: 248px;
+  --sidebar-width: 228px;
 }
 
 * {
@@ -107,6 +107,10 @@ body {
   place-items: center;
   cursor: pointer;
   transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.toolbar-toggle-btn {
+  display: none;
 }
 
 .top-icon-btn img {
@@ -211,6 +215,16 @@ body {
   background: transparent;
   border-left: none;
   z-index: 25;
+}
+
+.toolbar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  background: rgba(17, 24, 39, 0.24);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
 }
 
 .corner-links {
@@ -623,41 +637,201 @@ input[type="color"]::-webkit-color-swatch {
   }
 }
 
-@media (max-width: 980px) {
+@media (min-width: 1400px) {
   :root {
-    --sidebar-width: 258px;
-  }
-}
-
-@media (max-width: 820px) {
-  body {
-    grid-template-areas:
-      "header"
-      "main"
-      "sidebar";
-    grid-template-columns: 1fr;
-    grid-template-rows: var(--top-bar-height) 1fr auto;
+    --sidebar-width: 242px;
   }
 
   .preview-wrap {
-    border-right: none;
+    padding: 20px;
+  }
+}
+
+@media (max-width: 1024px) and (min-width: 769px) {
+  :root {
+    --top-bar-height: 50px;
+    --sidebar-width: 216px;
+  }
+
+  .top-bar {
+    padding: 5px 8px;
+  }
+
+  .top-bar-content {
+    padding: 0 10px;
+  }
+
+  .top-actions {
+    gap: 5px;
+  }
+
+  .top-icon-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .top-icon-btn img {
+    width: 14px;
+    height: 14px;
+  }
+
+  .app-logo {
+    width: 30px;
+    height: 30px;
+  }
+
+  .app-title {
+    font-size: 1rem;
+  }
+
+  .preview-wrap {
+    padding: 12px;
   }
 
   .toolbar {
-    position: static;
-    top: auto;
-    right: auto;
-    bottom: auto;
-    width: auto;
-    grid-area: sidebar;
-    flex-direction: row;
-    align-items: stretch;
+    top: calc(var(--top-bar-height) + 8px);
+    right: 8px;
+    bottom: 8px;
     gap: 8px;
+  }
+
+  .toolbar-group {
+    gap: 6px;
     padding: 8px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-left: none;
-    border-top: 1px solid var(--panel-border);
+  }
+
+  .toolbar-group > label {
+    font-size: 0.58rem;
+  }
+
+  .btn {
+    min-height: 34px;
+    font-size: 0.74rem;
+    padding: 7px 8px;
+  }
+
+  .btn img {
+    width: 14px;
+    height: 14px;
+  }
+
+  input[type="number"],
+  select {
+    font-size: 0.72rem;
+  }
+
+  #canvasSettingsPanel input[type="number"] {
+    min-height: 28px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --top-bar-height: 50px;
+  }
+
+  .top-bar {
+    padding: 5px 8px;
+  }
+
+  .top-bar-content {
+    padding: 0 10px;
+  }
+
+  .app-title-wrapper {
+    gap: 8px;
+  }
+
+  .app-logo {
+    width: 28px;
+    height: 28px;
+  }
+
+  .app-title {
+    font-size: 0.96rem;
+  }
+
+  .top-actions {
+    gap: 4px;
+  }
+
+  .toolbar-toggle-btn {
+    display: grid;
+  }
+
+  .top-icon-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .top-icon-btn img {
+    width: 14px;
+    height: 14px;
+  }
+
+  .preview-wrap {
+    padding: 14px;
+  }
+
+  .toolbar {
+    position: fixed;
+    top: calc(var(--top-bar-height) + 8px);
+    right: 8px;
+    bottom: 8px;
+    width: min(68vw, 210px);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 8px;
+    gap: 8px;
+    overflow-y: auto;
+    background: rgba(244, 247, 251, 0.97);
+    box-shadow: 0 16px 28px -20px rgba(15, 23, 42, 0.7);
+    transform: translateX(calc(100% + 14px));
+    transition: transform 0.2s ease;
+    pointer-events: none;
+  }
+
+  body.toolbar-open .toolbar {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  body.toolbar-open .toolbar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .toolbar-group {
+    padding: 7px;
+    gap: 5px;
+  }
+
+  .toolbar-group > label {
+    font-size: 0.56rem;
+  }
+
+  .btn {
+    min-height: 31px;
+    padding: 6px 7px;
+    font-size: 0.69rem;
+  }
+
+  .btn img {
+    width: 14px;
+    height: 14px;
+  }
+
+  .btn span {
+    white-space: nowrap;
+  }
+
+  .toolbar input[type="number"],
+  .toolbar select {
+    font-size: 0.66rem;
+  }
+
+  .toolbar .select-wrapper {
+    min-width: 0;
   }
 
   .corner-links {
@@ -668,66 +842,17 @@ input[type="color"]::-webkit-color-swatch {
   .legal-links {
     left: calc(10px + env(safe-area-inset-left, 0px));
     bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    gap: 10px;
+    gap: 8px;
   }
 
-  .divider {
-    display: none;
+  .legal-links a,
+  .legal-links a:link,
+  .legal-links a:visited {
+    font-size: 0.5rem;
   }
 
-  .toolbar-group {
-    min-width: max-content;
-    padding: 8px;
-    gap: 6px;
-  }
-
-  .toolbar-group > label {
-    display: none;
-  }
-
-  .button-row.stacked {
-    flex-direction: row;
-  }
-
-  .btn {
-    min-height: 40px;
-    padding: 7px 8px;
-    font-size: 0.72rem;
-  }
-
-  .btn img {
-    width: 14px;
-    height: 14px;
-  }
-
-  .btn span {
-    white-space: normal;
-    text-align: center;
-    line-height: 1.08;
-  }
-
-  .toolbar input[type="number"] {
-    width: 64px;
-    font-size: 0.74rem;
-    padding: 6px 5px;
-  }
-
-  .toolbar .select-wrapper {
-    min-width: 130px;
-  }
-
-  .toolbar select {
-    font-size: 0.74rem;
-    padding: 6px 20px 6px 7px;
-  }
-
-  .toolbar .canvas-toggle-row label {
-    display: block;
-    white-space: nowrap;
-  }
-
-  .toolbar input[type="color"] {
-    width: 28px;
-    height: 28px;
+  #mockupArea {
+    max-width: calc(100vw - 28px);
+    max-height: calc(100vh - var(--top-bar-height) - 28px);
   }
 }

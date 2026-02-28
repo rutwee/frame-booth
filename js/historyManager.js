@@ -9,6 +9,7 @@ export function createHistoryManager({
     getMockupGroups,
     placeImageInMockup,
     updateDownloadSceneButtonState,
+    ensureResponsiveFit,
     historyLimit = 80,
 }) {
     let sceneHistory = [];
@@ -85,6 +86,7 @@ export function createHistoryManager({
             appState.setCurrentSelectedMockup(null);
             transformer?.nodes([]);
             stage.findOne('Layer')?.batchDraw();
+            ensureResponsiveFit?.();
             updateDownloadSceneButtonState();
         } catch (error) {
             console.error('Failed to restore scene:', error);
