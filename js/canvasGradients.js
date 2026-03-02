@@ -6,6 +6,7 @@ const DEFAULT_CUSTOM_GRADIENT = {
 
 // Gradient preset library for canvas background styles.
 export const CANVAS_GRADIENTS = [
+    { id: 'none', name: 'None', angle: 0, stops: null },
     { id: 'solid', name: 'Solid', angle: 135, stops: null },
     { id: 'skyline', name: 'Skyline', angle: 140, stops: [0, '#e0f7ff', 1, '#8ec5ff'] },
     { id: 'sunset', name: 'Sunset', angle: 132, stops: [0, '#f6d365', 1, '#fda085'] },
@@ -108,6 +109,7 @@ function getResolvedGradient(gradientId, customGradient) {
 
 // Build a CSS gradient string for the mockup area background.
 export function getCanvasGradientCss(gradientId, solidColor = '#ffffff', customGradient = null) {
+    if (gradientId === 'none') return 'transparent';
     const preset = getResolvedGradient(gradientId, customGradient);
     if (!preset?.stops?.length) return solidColor || '#ffffff';
 
@@ -149,6 +151,12 @@ export function applyCanvasGradientToRect({
     if (!rect) return;
 
     if (!enabled) {
+        clearRectGradient(rect);
+        rect.fill('rgba(0,0,0,0)');
+        return;
+    }
+
+    if (gradientId === 'none') {
         clearRectGradient(rect);
         rect.fill('rgba(0,0,0,0)');
         return;

@@ -8,6 +8,8 @@ export function createHistoryManager({
     getStage,
     getMockupGroups,
     placeImageInMockup,
+    getCanvasBackgroundImageState,
+    restoreCanvasBackgroundImageState,
     updateDownloadSceneButtonState,
     ensureResponsiveFit,
     historyLimit = 80,
@@ -26,6 +28,7 @@ export function createHistoryManager({
             bgColor: ui.bgColor.value || '#ffffff',
             bgGradient: ui.bgGradient?.value || 'solid',
             customGradientData: ui.customGradientData?.value || '',
+            canvasBackgroundImage: getCanvasBackgroundImageState?.() || null,
             mockups: getMockupGroups(stage).map(group => ({
                 frameId: group.getAttr('frameId'),
                 x: group.x(),
@@ -69,6 +72,7 @@ export function createHistoryManager({
             if (ui.customGradientData) ui.customGradientData.value = scene.customGradientData || ui.customGradientData.value;
             window.dispatchEvent(new Event('custom-gradient-sync'));
             applyCanvasMode({ skipAnimation: true, skipHistory: true });
+            await restoreCanvasBackgroundImageState?.(scene.canvasBackgroundImage || null);
 
             for (const group of getMockupGroups(stage)) group.destroy();
             appState.setCurrentSelectedMockup(null);

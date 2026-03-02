@@ -41,15 +41,21 @@ function getPrimaryLayer(stage) {
 }
 
 function withTransformerHidden(stage, work) {
-    const transformer = stage.findOne('Transformer');
+    const transformersRaw = stage.find('Transformer');
+    const transformers = typeof transformersRaw?.toArray === 'function'
+        ? transformersRaw.toArray()
+        : Array.from(transformersRaw || []);
     const layer = getPrimaryLayer(stage);
-    const previousNodes = transformer?.nodes() ?? [];
+    const previousNodes = transformers.map((transformer) => ({
+        transformer,
+        nodes: transformer?.nodes?.() ?? [],
+    }));
 
-    transformer?.nodes([]);
+    previousNodes.forEach(({ transformer }) => transformer?.nodes([]));
     layer?.batchDraw();
 
     const restore = () => {
-        transformer?.nodes(previousNodes);
+        previousNodes.forEach(({ transformer, nodes }) => transformer?.nodes(nodes));
         layer?.batchDraw();
     };
 

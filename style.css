@@ -432,6 +432,20 @@ body {
   color: #fff;
 }
 
+#canvasImageBtn.btn.accent-purple img {
+  filter: brightness(0) saturate(100%) invert(22%) sepia(39%) saturate(2329%) hue-rotate(248deg) brightness(92%) contrast(96%);
+}
+
+#canvasImageBtn.btn.accent-purple:hover {
+  background: linear-gradient(to bottom, #7f56d9, #6941c6);
+  border-color: #5a32b4;
+  color: #fff;
+}
+
+#canvasImageBtn.btn.accent-purple:hover img {
+  filter: brightness(0) invert(1);
+}
+
 .btn.accent-blue:hover img,
 .btn.accent-green:hover img,
 .btn.accent-red:hover img,

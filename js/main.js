@@ -5,7 +5,16 @@
 import * as UI from './ui.js';
 import * as Helpers from './helpers.js';
 import { AppState, frames } from './state.js';
-import { initKonva, addMockup, lastAddedMockup, tr, updateKonvaCanvasBackground } from './konvaSetup.js';
+import {
+    initKonva,
+    addMockup,
+    lastAddedMockup,
+    tr,
+    updateKonvaCanvasBackground,
+    setCanvasBackgroundImageFromFile,
+    getCanvasBackgroundImageState,
+    restoreCanvasBackgroundImageState,
+} from './konvaSetup.js';
 import { initExport, updateDownloadSceneButtonState } from './export.js';
 import {
     detectIPhoneScreenshotProfile,
@@ -204,6 +213,8 @@ async function initializeApp() {
         getStage,
         getMockupGroups,
         placeImageInMockup,
+        getCanvasBackgroundImageState,
+        restoreCanvasBackgroundImageState,
         updateDownloadSceneButtonState,
         ensureResponsiveFit: () => layoutManager?.fitMockupsToViewport?.(),
     });
@@ -269,6 +280,30 @@ async function initializeApp() {
         layoutManager?.applyCanvasMode();
         gradientEditor?.syncVisibility?.();
     });
+    UI.canvasImageBtn?.addEventListener('click', () => {
+        if (UI.canvasEnabled && !UI.canvasEnabled.checked) {
+            UI.canvasEnabled.checked = true;
+            layoutManager?.applyCanvasMode();
+            gradientEditor?.syncVisibility?.();
+        }
+        UI.bgImageInput?.click();
+    });
+    UI.bgImageInput?.addEventListener('change', async (event) => {
+        const file = event.target?.files?.[0];
+        if (!file) {
+            UI.bgImageInput.value = '';
+            return;
+        }
+        try {
+            await setCanvasBackgroundImageFromFile(file);
+            updateKonvaCanvasBackground();
+            historyManager?.push();
+        } catch (error) {
+            alert(error?.message || 'Sorry, there was an error processing your image.');
+        } finally {
+            UI.bgImageInput.value = '';
+        }
+    });
     UI.undoBtn?.addEventListener('click', () => historyManager?.undo());
     UI.redoBtn?.addEventListener('click', () => historyManager?.redo());
     UI.resetBtn?.addEventListener('click', () => historyManager?.reset(() => resetViewportTransform?.()));
@@ -281,6 +316,9 @@ async function initializeApp() {
         layoutManager?.fitMockupsToViewport?.();
         updateDownloadSceneButtonState();
         scheduleHistoryPushFromFramesChanged();
+    });
+    window.addEventListener('canvas-bg-images-changed', () => {
+        historyManager?.push();
     });
     getStage()?.on('dragend transformend', () => historyManager?.push());
     layoutManager.bindWindowResize();
