@@ -5,7 +5,16 @@
 import * as UI from './ui.js';
 import * as Helpers from './helpers.js';
 import { AppState, frames } from './state.js';
-import { initKonva, addMockup, lastAddedMockup, tr, updateKonvaCanvasBackground } from './konvaSetup.js';
+import {
+    initKonva,
+    addMockup,
+    lastAddedMockup,
+    tr,
+    updateKonvaCanvasBackground,
+    setCanvasBackgroundImageFromFile,
+    getCanvasBackgroundImageState,
+    restoreCanvasBackgroundImageState,
+} from './konvaSetup.js';
 import { initExport, updateDownloadSceneButtonState } from './export.js';
 import {
     detectIPhoneScreenshotProfile,
@@ -17,6 +26,8 @@ import { createHistoryManager } from './historyManager.js';
 import { createUploadManager } from './uploadManager.js';
 import { createFrameActions } from './frameActions.js';
 import { createLayoutManager } from './layoutManager.js';
+import { CANVAS_GRADIENTS, getDefaultCanvasGradientId } from './canvasGradients.js';
+import { createGradientEditor } from './gradientEditor.js';
 
 const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MIN_ZOOM = 0.1;
@@ -27,6 +38,7 @@ let historyManager = null;
 let uploadManager = null;
 let frameActions = null;
 let layoutManager = null;
+let gradientEditor = null;
 let framesChangedHistoryTimer = null;
 
 function clamp(value, min, max) {
@@ -137,6 +149,15 @@ async function addMockupByFrameId(frameId, options) {
     }
 }
 
+function populateCanvasGradientOptions() {
+    if (!UI.bgGradient) return;
+    UI.bgGradient.innerHTML = '';
+    CANVAS_GRADIENTS.forEach((preset) => {
+        UI.bgGradient.appendChild(new Option(preset.name, preset.id));
+    });
+    UI.bgGradient.value = getDefaultCanvasGradientId();
+}
+
 // ==========================================================================
 // INITIALIZATION - initializeApp()
 // ==========================================================================
@@ -159,6 +180,7 @@ async function initializeApp() {
     if (UI.frameSelect.options.length > 0) {
         UI.frameSelect.options[0].selected = true;
     }
+    populateCanvasGradientOptions();
     // responsive default canvas size for mobile
     if (window.innerWidth <= 768) { 
         UI.docWidth.value = 350; 
@@ -191,6 +213,8 @@ async function initializeApp() {
         getStage,
         getMockupGroups,
         placeImageInMockup,
+        getCanvasBackgroundImageState,
+        restoreCanvasBackgroundImageState,
         updateDownloadSceneButtonState,
         ensureResponsiveFit: () => layoutManager?.fitMockupsToViewport?.(),
     });
@@ -215,6 +239,16 @@ async function initializeApp() {
         redo: () => historyManager?.redo(),
         isTypingInFormField,
     });
+    gradientEditor = createGradientEditor({
+        ui: UI,
+        isTypingInFormField,
+        onChange: () => {
+            Helpers.updateMockupBackground();
+            updateKonvaCanvasBackground();
+            historyManager?.push();
+        },
+    });
+    gradientEditor.init();
     layoutManager.applyCanvasMode({ skipHistory: true });
     initExport();
     resetViewportTransform = initZoomPanControls({
@@ -242,7 +276,34 @@ async function initializeApp() {
     UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
     bindCanvasSizeCommitInput(UI.docWidth);
     bindCanvasSizeCommitInput(UI.docHeight);
-    UI.canvasEnabled?.addEventListener('change', () => layoutManager?.applyCanvasMode());
+    UI.canvasEnabled?.addEventListener('change', () => {
+        layoutManager?.applyCanvasMode();
+        gradientEditor?.syncVisibility?.();
+    });
+    UI.canvasImageBtn?.addEventListener('click', () => {
+        if (UI.canvasEnabled && !UI.canvasEnabled.checked) {
+            UI.canvasEnabled.checked = true;
+            layoutManager?.applyCanvasMode();
+            gradientEditor?.syncVisibility?.();
+        }
+        UI.bgImageInput?.click();
+    });
+    UI.bgImageInput?.addEventListener('change', async (event) => {
+        const file = event.target?.files?.[0];
+        if (!file) {
+            UI.bgImageInput.value = '';
+            return;
+        }
+        try {
+            await setCanvasBackgroundImageFromFile(file);
+            updateKonvaCanvasBackground();
+            historyManager?.push();
+        } catch (error) {
+            alert(error?.message || 'Sorry, there was an error processing your image.');
+        } finally {
+            UI.bgImageInput.value = '';
+        }
+    });
     UI.undoBtn?.addEventListener('click', () => historyManager?.undo());
     UI.redoBtn?.addEventListener('click', () => historyManager?.redo());
     UI.resetBtn?.addEventListener('click', () => historyManager?.reset(() => resetViewportTransform?.()));
@@ -255,6 +316,9 @@ async function initializeApp() {
         layoutManager?.fitMockupsToViewport?.();
         updateDownloadSceneButtonState();
         scheduleHistoryPushFromFramesChanged();
+    });
+    window.addEventListener('canvas-bg-images-changed', () => {
+        historyManager?.push();
     });
     getStage()?.on('dragend transformend', () => historyManager?.push());
     layoutManager.bindWindowResize();
