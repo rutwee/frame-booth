@@ -207,6 +207,55 @@ body {
   box-shadow: none;
 }
 
+.frame-outside-handles,
+.canvas-image-outside-handles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 14;
+}
+
+.frame-outside-handles .outside-handle,
+.canvas-image-outside-handles .outside-handle {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  background: #fff;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.75);
+  display: none;
+}
+
+.frame-outside-handles .outside-handle.tl,
+.frame-outside-handles .outside-handle.br,
+.canvas-image-outside-handles .outside-handle.tl,
+.canvas-image-outside-handles .outside-handle.br {
+  cursor: nwse-resize;
+}
+
+.frame-outside-handles .outside-handle.tr,
+.frame-outside-handles .outside-handle.bl,
+.canvas-image-outside-handles .outside-handle.tr,
+.canvas-image-outside-handles .outside-handle.bl {
+  cursor: nesw-resize;
+}
+
+.frame-outside-handles .outside-handle.rotate,
+.canvas-image-outside-handles .outside-handle.rotate {
+  cursor: grab;
+}
+
+.frame-outside-handles .outside-handle {
+  border: 1px solid #111827;
+}
+
+.canvas-image-outside-handles .outside-handle {
+  border: 1px solid #4b5563;
+  width: 9px;
+  height: 9px;
+}
+
 .toolbar {
   position: absolute;
   top: calc(var(--top-bar-height) + 10px);

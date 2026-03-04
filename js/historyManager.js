@@ -101,6 +101,7 @@ export function createHistoryManager({
             console.error('Failed to restore scene:', error);
         } finally {
             isRestoringHistory = false;
+            window.dispatchEvent(new Event('scene-restored'));
             if (!forHistory) push();
             updateHistoryButtons();
         }

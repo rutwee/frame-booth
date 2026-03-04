@@ -31,6 +31,18 @@ const CANVAS_BG_IMAGE_ACCEPTED_TYPES = new Set([
   "image/gif",
 ]);
 let canvasImageTransformer = null;
+let frameOutsideHandles = null;
+let canvasImageOutsideHandles = null;
+const OUTSIDE_HANDLE_ANCHORS = {
+  tl: "top-left",
+  tr: "top-right",
+  bl: "bottom-left",
+  br: "bottom-right",
+  rotate: "rotater",
+};
+const OPPOSITE_HANDLE = { tl: "br", tr: "bl", bl: "tr", br: "tl" };
+const MIN_SCALE_RATIO = 0.05;
+let outsideHandleSession = null;
 
 function notifyFramesChanged() {
   window.dispatchEvent(new Event("frames-changed"));
@@ -53,11 +65,18 @@ function isCanvasImageVisible() {
   return !!isCanvasEnabled();
 }
 
+function getSelectedMockupNode() {
+  const node = tr?.nodes?.()?.[0] || null;
+  if (!node?.hasName?.("mockup-group")) return null;
+  return node?.getStage?.() === stage ? node : null;
+}
+
 function clearCanvasBackgroundImageSelection() {
   canvasImageTransformer?.nodes([]);
   if (!tr?.nodes?.()?.length && UI.deleteBtn) {
     UI.deleteBtn.disabled = true;
   }
+  if (canvasImageOutsideHandles) canvasImageOutsideHandles.hidden = true;
 }
 
 function getCanvasBackgroundImageNodes() {
@@ -68,7 +87,297 @@ function getCanvasBackgroundImageNodes() {
 
 function getSelectedCanvasBackgroundImageNode() {
   const node = canvasImageTransformer?.nodes?.()?.[0] || null;
-  return node?.hasName?.("canvas-bg-image") ? node : null;
+  if (!node?.hasName?.("canvas-bg-image")) return null;
+  return node?.getStage?.() === stage ? node : null;
+}
+
+function ensureOutsideHandlesOverlay(kind = "frame") {
+  const previewWrap = document.querySelector(".preview-wrap");
+  if (!previewWrap) return null;
+  const existing = kind === "frame" ? frameOutsideHandles : canvasImageOutsideHandles;
+  if (existing) return existing;
+
+  const el = document.createElement("div");
+  el.className = kind === "frame" ? "frame-outside-handles" : "canvas-image-outside-handles";
+  el.hidden = true;
+  el.innerHTML = `
+    <span class="outside-handle tl"></span>
+    <span class="outside-handle tr"></span>
+    <span class="outside-handle bl"></span>
+    <span class="outside-handle br"></span>
+    <span class="outside-handle rotate"></span>
+  `;
+  previewWrap.appendChild(el);
+  bindOutsideHandleOverlay(el, kind);
+  if (kind === "frame") {
+    frameOutsideHandles = el;
+  } else {
+    canvasImageOutsideHandles = el;
+  }
+  return el;
+}
+
+function getTransformerScreenAnchorPoints(transformer, stageRect) {
+  if (!transformer || !stageRect || !stage) return null;
+  const sx = stageRect.width / Math.max(1, stage.width());
+  const sy = stageRect.height / Math.max(1, stage.height());
+  const points = {};
+
+  for (const [key, anchorName] of Object.entries(OUTSIDE_HANDLE_ANCHORS)) {
+    const anchor = transformer.findOne?.(`.${anchorName}`);
+    const pos = anchor?.getAbsolutePosition?.();
+    if (!pos) continue;
+    points[key] = {
+      x: stageRect.left + pos.x * sx,
+      y: stageRect.top + pos.y * sy,
+    };
+  }
+
+  return points;
+}
+
+function renderOutsideHandles(overlay, points, previewRect, stageRect) {
+  let showAny = false;
+  for (const key of Object.keys(OUTSIDE_HANDLE_ANCHORS)) {
+    const handle = overlay.querySelector(`.outside-handle.${key}`);
+    if (!handle) continue;
+    const point = points?.[key];
+    if (!point) {
+      handle.style.display = "none";
+      continue;
+    }
+
+    const outside = (
+      point.x < stageRect.left ||
+      point.x > stageRect.right ||
+      point.y < stageRect.top ||
+      point.y > stageRect.bottom
+    );
+    handle.style.display = outside ? "block" : "none";
+    if (!outside) continue;
+    handle.style.left = `${point.x - previewRect.left}px`;
+    handle.style.top = `${point.y - previewRect.top}px`;
+    showAny = true;
+  }
+  overlay.hidden = !showAny;
+}
+
+function updateFrameOutsideHandles() {
+  const overlay = ensureOutsideHandlesOverlay("frame");
+  const selected = getSelectedMockupNode();
+  if (!overlay || !selected || !isCanvasEnabled()) {
+    if (overlay) overlay.hidden = true;
+    return;
+  }
+  const previewRect = document.querySelector(".preview-wrap")?.getBoundingClientRect?.();
+  const stageRect = stage?.container?.()?.getBoundingClientRect?.();
+  if (!previewRect || !stageRect) {
+    overlay.hidden = true;
+    return;
+  }
+  const points = getTransformerScreenAnchorPoints(tr, stageRect);
+  renderOutsideHandles(overlay, points, previewRect, stageRect);
+}
+
+function updateCanvasImageOutsideHandles() {
+  const overlay = ensureOutsideHandlesOverlay("canvas-image");
+  const selected = getSelectedCanvasBackgroundImageNode();
+  if (!overlay || !selected || !isCanvasEnabled()) {
+    if (overlay) overlay.hidden = true;
+    return;
+  }
+  const previewRect = document.querySelector(".preview-wrap")?.getBoundingClientRect?.();
+  const stageRect = stage?.container?.()?.getBoundingClientRect?.();
+  if (!previewRect || !stageRect) {
+    overlay.hidden = true;
+    return;
+  }
+  const points = getTransformerScreenAnchorPoints(canvasImageTransformer, stageRect);
+  renderOutsideHandles(overlay, points, previewRect, stageRect);
+}
+
+function refreshOutsideHandles() {
+  updateFrameOutsideHandles();
+  updateCanvasImageOutsideHandles();
+}
+
+function getHandleKey(target) {
+  if (!target?.classList?.contains("outside-handle")) return null;
+  for (const key of Object.keys(OUTSIDE_HANDLE_ANCHORS)) {
+    if (target.classList.contains(key)) return key;
+  }
+  return null;
+}
+
+function getStageRect() {
+  return stage?.container?.()?.getBoundingClientRect?.() || null;
+}
+
+function screenToStagePoint(x, y, stageRect) {
+  if (!stageRect || !stage) return null;
+  const sx = stageRect.width / Math.max(1, stage.width());
+  const sy = stageRect.height / Math.max(1, stage.height());
+  return {
+    x: (x - stageRect.left) / sx,
+    y: (y - stageRect.top) / sy,
+  };
+}
+
+function getSelectionCenterStage(node) {
+  const rect = node?.getClientRect?.({ skipShadow: true, skipStroke: true });
+  if (!rect) return null;
+  return {
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+  };
+}
+
+function getOverlayBindingState(kind) {
+  if (kind === "frame") {
+    return {
+      node: getSelectedMockupNode(),
+      transformer: tr,
+      onCommit: notifyFramesChanged,
+    };
+  }
+  return {
+    node: getSelectedCanvasBackgroundImageNode(),
+    transformer: canvasImageTransformer,
+    onCommit: notifyCanvasBackgroundImagesChanged,
+  };
+}
+
+function endOutsideHandleSession(commit = true) {
+  if (!outsideHandleSession) return;
+  const { onCommit } = outsideHandleSession;
+  outsideHandleSession = null;
+  window.removeEventListener("pointermove", onOutsideHandlePointerMove);
+  window.removeEventListener("pointerup", onOutsideHandlePointerUp);
+  window.removeEventListener("pointercancel", onOutsideHandlePointerUp);
+  refreshOutsideHandles();
+  if (commit) onCommit?.();
+}
+
+function onOutsideHandlePointerMove(event) {
+  if (!outsideHandleSession) return;
+  const {
+    node,
+    mode,
+    stageRect,
+    centerStage,
+    fixedStage,
+    startActiveStage,
+    startPosition,
+    startScale,
+    startRotation,
+    startPointerAngle,
+  } = outsideHandleSession;
+  if (!node?.getStage?.()) {
+    endOutsideHandleSession(false);
+    return;
+  }
+
+  event.preventDefault();
+  const point = screenToStagePoint(event.clientX, event.clientY, stageRect);
+  if (!point) return;
+
+  if (mode === "rotate") {
+    const currentAngle = Math.atan2(point.y - centerStage.y, point.x - centerStage.x);
+    node.rotation(startRotation + ((currentAngle - startPointerAngle) * 180) / Math.PI);
+    // Keep the visual center fixed so outside-rotate matches Transformer pivot behavior.
+    const currentCenter = getSelectionCenterStage(node);
+    if (currentCenter) {
+      node.position({
+        x: node.x() + (centerStage.x - currentCenter.x),
+        y: node.y() + (centerStage.y - currentCenter.y),
+      });
+    }
+    if (node.hasName?.("mockup-group")) {
+      boundsHelpers?.constrainGroupToStage(node);
+    }
+  } else {
+    const startVector = {
+      x: startActiveStage.x - fixedStage.x,
+      y: startActiveStage.y - fixedStage.y,
+    };
+    const currentVector = {
+      x: point.x - fixedStage.x,
+      y: point.y - fixedStage.y,
+    };
+    const startLength = Math.hypot(startVector.x, startVector.y) || 1;
+    const ux = startVector.x / startLength;
+    const uy = startVector.y / startLength;
+    const projected = currentVector.x * ux + currentVector.y * uy;
+    const ratio = Math.max(MIN_SCALE_RATIO, projected / startLength);
+
+    node.scale({
+      x: startScale.x * ratio,
+      y: startScale.y * ratio,
+    });
+    node.position({
+      x: startPosition.x * ratio + fixedStage.x * (1 - ratio),
+      y: startPosition.y * ratio + fixedStage.y * (1 - ratio),
+    });
+    if (node.hasName?.("mockup-group")) {
+      boundsHelpers?.constrainGroupToStage(node);
+    }
+  }
+
+  layer?.batchDraw();
+  refreshOutsideHandles();
+}
+
+function onOutsideHandlePointerUp() {
+  endOutsideHandleSession(true);
+}
+
+function bindOutsideHandleOverlay(overlay, kind) {
+  overlay.addEventListener("pointerdown", (event) => {
+    const handleKey = getHandleKey(event.target);
+    if (!handleKey || event.button !== 0) return;
+
+    const { node, transformer, onCommit } = getOverlayBindingState(kind);
+    const stageRect = getStageRect();
+    if (!node || !transformer || !stageRect) return;
+
+    const screenPoints = getTransformerScreenAnchorPoints(transformer, stageRect);
+    const activeScreen = screenPoints?.[handleKey];
+    if (!activeScreen) return;
+    const startActiveStage = screenToStagePoint(activeScreen.x, activeScreen.y, stageRect);
+    const pointerStage = screenToStagePoint(event.clientX, event.clientY, stageRect);
+    if (!startActiveStage || !pointerStage) return;
+
+    const centerStage = getSelectionCenterStage(node);
+    if (!centerStage) return;
+
+    let fixedStage = null;
+    if (handleKey !== "rotate") {
+      const oppositeKey = OPPOSITE_HANDLE[handleKey];
+      const fixedScreen = oppositeKey ? screenPoints?.[oppositeKey] : null;
+      fixedStage = fixedScreen ? screenToStagePoint(fixedScreen.x, fixedScreen.y, stageRect) : null;
+      if (!fixedStage) return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    endOutsideHandleSession(false);
+    outsideHandleSession = {
+      node,
+      mode: handleKey === "rotate" ? "rotate" : "scale",
+      stageRect,
+      centerStage,
+      fixedStage,
+      startActiveStage,
+      startPosition: { x: node.x(), y: node.y() },
+      startScale: { x: node.scaleX(), y: node.scaleY() },
+      startRotation: node.rotation(),
+      startPointerAngle: Math.atan2(pointerStage.y - centerStage.y, pointerStage.x - centerStage.x),
+      onCommit,
+    };
+    window.addEventListener("pointermove", onOutsideHandlePointerMove, { passive: false });
+    window.addEventListener("pointerup", onOutsideHandlePointerUp);
+    window.addEventListener("pointercancel", onOutsideHandlePointerUp);
+  });
 }
 
 function placeCanvasBackgroundImagesBehindFrames() {
@@ -102,6 +411,7 @@ function syncCanvasBackgroundImageVisibility() {
   if (!visible) {
     clearCanvasBackgroundImageSelection();
   }
+  refreshOutsideHandles();
 }
 
 function fitCanvasBackgroundImageToStage(imageNode, imageElement) {
@@ -143,9 +453,14 @@ async function setCanvasBackgroundImageFromSource(src, snapshot = null) {
     canvasImageTransformer?.nodes([canvasBackgroundImageNode]);
     canvasImageTransformer?.moveToTop();
     if (UI.deleteBtn) UI.deleteBtn.disabled = false;
+    refreshOutsideHandles();
     layer.batchDraw();
   });
+  canvasBackgroundImageNode.on("dragmove transform", () => {
+    refreshOutsideHandles();
+  });
   canvasBackgroundImageNode.on("dragend transformend", () => {
+    refreshOutsideHandles();
     notifyCanvasBackgroundImagesChanged();
   });
   layer.add(canvasBackgroundImageNode);
@@ -176,6 +491,7 @@ async function setCanvasBackgroundImageFromSource(src, snapshot = null) {
     clearCanvasBackgroundImageSelection();
   }
   tr?.moveToTop();
+  refreshOutsideHandles();
   layer.batchDraw();
   return canvasBackgroundImageNode;
 }
@@ -226,6 +542,7 @@ export async function restoreCanvasBackgroundImageState(snapshot) {
     await setCanvasBackgroundImageFromSource(item.src, item);
   }
   clearCanvasBackgroundImageSelection();
+  refreshOutsideHandles();
   layer?.batchDraw();
 }
 
@@ -234,6 +551,7 @@ export function clearCanvasBackgroundImage(removeAll = false) {
   if (selected && !removeAll) {
     selected.destroy();
     clearCanvasBackgroundImageSelection();
+    refreshOutsideHandles();
     layer?.batchDraw();
     return true;
   }
@@ -241,6 +559,7 @@ export function clearCanvasBackgroundImage(removeAll = false) {
   if (!nodes.length) return false;
   nodes.forEach((node) => node.destroy());
   clearCanvasBackgroundImageSelection();
+  refreshOutsideHandles();
   layer?.batchDraw();
   return true;
 }
@@ -377,9 +696,11 @@ export async function addMockup(options = {}) {
   });
   group.on("dragmove transform", () => {
     boundsHelpers?.constrainGroupToStage(group);
+    refreshOutsideHandles();
   });
   group.on("dragend transformend", () => {
     boundsHelpers?.constrainGroupToStage(group);
+    refreshOutsideHandles();
     notifyFramesChanged();
   });
 
@@ -444,6 +765,18 @@ export function initKonva() {
     borderDash: [4, 4],
   });
   layer.add(canvasImageTransformer);
+  const trNodes = tr.nodes.bind(tr);
+  tr.nodes = (...args) => {
+    const result = trNodes(...args);
+    if (args.length) refreshOutsideHandles();
+    return result;
+  };
+  const canvasTransformerNodes = canvasImageTransformer.nodes.bind(canvasImageTransformer);
+  canvasImageTransformer.nodes = (...args) => {
+    const result = canvasTransformerNodes(...args);
+    if (args.length) refreshOutsideHandles();
+    return result;
+  };
   boundsHelpers = createKonvaBoundsHelpers({
     getStage: () => stage,
     getLastAddedMockup: () => lastAddedMockup,
@@ -469,9 +802,13 @@ export function initKonva() {
     if (e.target === stage) {
       selectionManager?.clearSelection();
       clearCanvasBackgroundImageSelection();
+      refreshOutsideHandles();
       layer.batchDraw();
     }
   });
+  window.addEventListener("viewport-transform-changed", refreshOutsideHandles);
+  window.addEventListener("scene-restored", refreshOutsideHandles);
+  window.addEventListener("frames-changed", refreshOutsideHandles);
   /* UI event listeners tied to Konva actions */
   UI.bgColor.addEventListener("input", () => {
     updateKonvaCanvasBackground();
@@ -509,6 +846,7 @@ export function resizeKonvaStage() {
     for (const group of groups) {
       boundsHelpers?.constrainGroupToStage(group);
     }
+    refreshOutsideHandles();
     layer.batchDraw();
   }
 }

@@ -19,6 +19,7 @@ export function initZoomPanControls({
 
     function applyTransform() {
         mockupArea.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        window.dispatchEvent(new Event('viewport-transform-changed'));
     }
 
     function resetTransform() {
