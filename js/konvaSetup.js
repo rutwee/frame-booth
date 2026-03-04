@@ -78,6 +78,21 @@ function placeCanvasBackgroundImagesBehindFrames() {
   });
 }
 
+function bringCanvasBackgroundImageToFront(targetNode) {
+  if (!targetNode) return;
+  const nodes = getCanvasBackgroundImageNodes();
+  if (!nodes.length) return;
+
+  const ordered = nodes.filter((node) => node !== targetNode);
+  ordered.push(targetNode);
+  ordered.forEach((node, index) => {
+    node.zIndex(1 + index);
+  });
+
+  tr?.moveToTop();
+  canvasImageTransformer?.moveToTop();
+}
+
 function syncCanvasBackgroundImageVisibility() {
   const visible = isCanvasImageVisible();
   const nodes = getCanvasBackgroundImageNodes();
@@ -123,6 +138,7 @@ async function setCanvasBackgroundImageFromSource(src, snapshot = null) {
   canvasBackgroundImageNode.on("click tap", (event) => {
     event.cancelBubble = true;
     if (!isCanvasImageVisible()) return;
+    bringCanvasBackgroundImageToFront(canvasBackgroundImageNode);
     selectionManager?.clearSelection();
     canvasImageTransformer?.nodes([canvasBackgroundImageNode]);
     canvasImageTransformer?.moveToTop();
