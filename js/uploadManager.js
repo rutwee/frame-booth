@@ -1,3 +1,5 @@
+import { asArray } from './sceneUtils.js';
+
 export function createUploadManager({
     ui,
     appState,
@@ -8,7 +10,9 @@ export function createUploadManager({
     onSceneChanged,
     maxUploadSizeBytes = 8 * 1024 * 1024,
 }) {
+    // Validate file format and size before any file-read work.
     function getImageValidationError(file) {
+        if (!file) return 'Please select a valid image file.';
         if (!file.type.startsWith('image/')) {
             return 'Please select a valid image file.';
         }
@@ -18,6 +22,7 @@ export function createUploadManager({
         return null;
     }
 
+    // Decode and place the selected image into the target mockup group.
     async function loadAndPlaceImage(file, targetMockup) {
         const validationError = getImageValidationError(file);
         if (validationError) {
@@ -34,6 +39,7 @@ export function createUploadManager({
         onSceneChanged?.();
     }
 
+    // Handle upload input changes and route to the current or last frame.
     async function handleImageUpload(e) {
         const file = e.target.files?.[0];
         if (!file) {
@@ -52,6 +58,7 @@ export function createUploadManager({
         }
     }
 
+    // Resolve which mockup group was under the cursor for drag-drop uploads.
     function getMockupAtClientPoint(clientX, clientY) {
         const stage = getStage?.();
         if (!stage) return null;
@@ -68,8 +75,7 @@ export function createUploadManager({
         const directMockup = shape?.findAncestor?.('.mockup-group');
         if (directMockup) return directMockup;
 
-        const found = stage.find('.mockup-group');
-        const groups = typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
+        const groups = asArray(stage.find('.mockup-group'));
         for (let i = groups.length - 1; i >= 0; i -= 1) {
             const r = groups[i].getClientRect();
             if (point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height) {
@@ -79,6 +85,7 @@ export function createUploadManager({
         return null;
     }
 
+    // Bind drag-drop upload events to the workspace area.
     function initDragAndDropUpload() {
         ui.mockupArea.addEventListener('dragover', e => {
             e.preventDefault();
