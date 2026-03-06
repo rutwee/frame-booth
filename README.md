@@ -2,9 +2,6 @@
 
 Frame Booth is a browser-based mockup tool for placing screenshots into iPhone frames, arranging multiple frames, and exporting high-quality PNGs.
 
-## Product Example
-![Frame Booth Product Example](assets/product-example.png)
-
 ## Features
 - Add/update/delete iPhone frame mockups
 - Double-click empty frame to upload screenshot
@@ -44,6 +41,9 @@ Frame Booth is a browser-based mockup tool for placing screenshots into iPhone f
 - `Ctrl/Cmd + wheel` - zoom
 - `0` - reset zoom/pan
 - `Delete/Backspace` - delete selected frame/content
+
+## Product Example
+![Frame Booth Product Example](assets/product-example.png)
 
 ## Contact
 - Email: `framebooth.ca@gmail.com`
