@@ -18,7 +18,14 @@ export function createHistoryManager({
     let redoHistory = [];
     let initialSceneSnapshot = null;
     let isRestoringHistory = false;
+    let lastSceneHash = '';
 
+    // Convert a scene snapshot to a stable hash for dedupe checks.
+    function hashScene(scene) {
+        return scene ? JSON.stringify(scene) : '';
+    }
+
+    // Capture the full UI + stage state required for undo/redo.
     function serializeScene() {
         const stage = getStage();
         return {
@@ -46,17 +53,20 @@ export function createHistoryManager({
         if (ui.redoBtn) ui.redoBtn.disabled = redoHistory.length < 1;
     }
 
+    // Push a new scene snapshot unless it is identical to the last state.
     function push() {
         if (isRestoringHistory) return;
         const scene = serializeScene();
-        const prev = sceneHistory[sceneHistory.length - 1];
-        if (prev && JSON.stringify(prev) === JSON.stringify(scene)) return;
+        const sceneHash = hashScene(scene);
+        if (sceneHash === lastSceneHash) return;
         sceneHistory.push(scene);
         if (sceneHistory.length > historyLimit) sceneHistory.shift();
         redoHistory = [];
+        lastSceneHash = sceneHash;
         updateHistoryButtons();
     }
 
+    // Rebuild UI controls + Konva nodes from a stored scene snapshot.
     async function restoreScene(scene, forHistory = false) {
         if (!scene) return;
         const stage = getStage();
@@ -102,39 +112,51 @@ export function createHistoryManager({
         } finally {
             isRestoringHistory = false;
             window.dispatchEvent(new Event('scene-restored'));
-            if (!forHistory) push();
+            if (!forHistory) {
+                push();
+            } else {
+                const current = sceneHistory[sceneHistory.length - 1];
+                lastSceneHash = hashScene(current);
+            }
             updateHistoryButtons();
         }
     }
 
+    // Move one step backward in history.
     async function undo() {
         if (sceneHistory.length < 2) return;
         const current = sceneHistory.pop();
         if (current) redoHistory.push(current);
         const previous = sceneHistory[sceneHistory.length - 1];
+        lastSceneHash = hashScene(previous);
         updateHistoryButtons();
         await restoreScene(previous, true);
     }
 
+    // Move one step forward in history.
     async function redo() {
         if (!redoHistory.length) return;
         const next = redoHistory.pop();
         if (!next) return;
         sceneHistory.push(next);
+        lastSceneHash = hashScene(next);
         updateHistoryButtons();
         await restoreScene(next, true);
     }
 
+    // Restore the initial load-state snapshot and reset viewport.
     async function reset(runViewportReset) {
         if (!initialSceneSnapshot) return;
         runViewportReset?.();
         await restoreScene(initialSceneSnapshot);
     }
 
+    // Capture the first stable scene state after app bootstrap.
     function captureInitialScene() {
         sceneHistory = [serializeScene()];
         redoHistory = [];
         initialSceneSnapshot = JSON.parse(JSON.stringify(sceneHistory[0]));
+        lastSceneHash = hashScene(sceneHistory[0]);
         updateHistoryButtons();
     }
 

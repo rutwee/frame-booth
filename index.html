@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Frame App</title>
-  
+
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,7 +32,7 @@
           <img src="icons/menu_icon.svg" alt="Toggle Controls">
         </button>
       </div>
-      <div class="app-title-wrapper"> 
+      <div class="app-title-wrapper">
       <img src="icons/framebooth_icon.svg" alt="Frame Booth Logo" class="app-logo">
       <h1 class="app-title">Frame Booth</h1>
     </div>
@@ -40,16 +40,16 @@
   </header>
 
   <main class="preview-wrap">
-    <canvas id="myCanvas"></canvas> <div id="mockupArea">
-      </div>
+    <canvas id="myCanvas"></canvas>
+    <div id="mockupArea"></div>
   </main>
 
   <aside id="toolbarPanel" class="toolbar" role="toolbar" aria-label="controls">
-    
+
     <div class="toolbar-group">
       <label>Screenshot</label>
       <input type="file" id="fileInput" accept="image/*" hidden>
-      
+
       <div class="button-row">
         <button id="uploadBtn" class="btn accent-green" title="Upload a screenshot (PNG, JPG) (Max 8MB)">
           <img src="icons/add_screenshot_icon.svg" alt="Add Screenshot">
@@ -62,8 +62,6 @@
         </button>
       </div>
     </div>
-
-    <div class="divider"></div>
 
     <div class="toolbar-group">
       <label for="frameSelect">Device Frame</label>
@@ -83,8 +81,6 @@
         </button>
       </div>
     </div>
-
-    <div class="divider"></div>
 
     <div class="toolbar-group">
       <label>Canvas Settings</label>
@@ -136,8 +132,6 @@
         </div>
       </div>
     </div>
-
-    <div class="divider"></div>
 
     <div class="toolbar-group">
       <label>Export</label>

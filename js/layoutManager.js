@@ -1,3 +1,5 @@
+import { collectMockupNodes } from './sceneUtils.js';
+
 export function createLayoutManager({
     ui,
     helpers,
@@ -9,12 +11,6 @@ export function createLayoutManager({
     let hasCanvasModeInitialized = false;
     const FIT_PADDING = 16;
 
-    function getMockupGroups(stage) {
-        if (!stage?.find) return [];
-        const found = stage.find('.mockup-group');
-        return typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
-    }
-
     function offsetMockupsForStageResize(previousStageWidth, previousStageHeight) {
         const stage = getStage?.();
         if (!stage?.find || !previousStageWidth || !previousStageHeight) return;
@@ -23,7 +19,7 @@ export function createLayoutManager({
         const dy = (stage.height() - previousStageHeight) / 2;
         if (!dx && !dy) return;
 
-        const groups = getMockupGroups(stage);
+        const groups = collectMockupNodes(stage);
         if (!groups.length) return;
 
         for (const group of groups) {
@@ -75,7 +71,7 @@ export function createLayoutManager({
     function fitMockupsToStageOnSmallScreens() {
         const stage = getStage?.();
         if (!stage || window.innerWidth > 1024) return;
-        const groups = getMockupGroups(stage);
+        const groups = collectMockupNodes(stage);
         if (!groups.length) return;
 
         const stageWidth = stage.width();

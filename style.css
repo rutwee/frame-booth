@@ -2,15 +2,8 @@
   --app-bg: #e8eaee;
   --topbar-bg-a: #2d3440;
   --topbar-bg-b: #252b35;
-  --workspace-bg-a: #f1f3f6;
-  --workspace-bg-b: #eceef2;
-  --workspace-line: rgba(122, 132, 149, 0.2);
   --workspace-base: #e8edf5;
-  --workspace-grid-line: rgba(176, 188, 207, 0.28);
-  --panel-bg: #f3f5f8;
-  --panel-card: #ffffff;
   --panel-border: #d5dbe6;
-  --panel-divider: #e0e5ed;
 
   --text-main: #222834;
   --text-soft: #4f5a6d;
@@ -370,10 +363,6 @@ body {
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-muted);
-}
-
-.divider {
-  display: none;
 }
 
 .button-row {
