@@ -1,7 +1,3 @@
-// ==========================================================================
-// APPLICATION ENTRY POINT
-// ==========================================================================
-
 import * as UI from './ui.js';
 import * as Helpers from './helpers.js';
 import { AppState, frames } from './state.js';
@@ -12,6 +8,9 @@ import {
     tr,
     updateKonvaCanvasBackground,
     setCanvasBackgroundImageFromFile,
+    addCanvasText,
+    getSelectedCanvasTextSnapshot,
+    updateSelectedCanvasText,
     getCanvasBackgroundImageState,
     restoreCanvasBackgroundImageState,
 } from './konvaSetup.js';
@@ -38,7 +37,7 @@ let historyManager = null;
 let uploadManager = null;
 let frameActions = null;
 let layoutManager = null;
-let gradientEditor = null;
+let gradientEditors = [];
 let framesChangedHistoryTimer = null;
 
 function clamp(value, min, max) {
@@ -46,7 +45,30 @@ function clamp(value, min, max) {
 }
 
 function isTypingInFormField() {
-    return EDITABLE_TAGS.includes(document.activeElement?.tagName);
+    const active = document.activeElement;
+    if (!active) return false;
+    if (EDITABLE_TAGS.includes(active.tagName)) return true;
+    if (active.isContentEditable) return true;
+    return !!active.closest?.('#canvasTextPanel');
+}
+
+function parseFontStyle(fontStyle = '') {
+    const normalized = String(fontStyle).toLowerCase();
+    return {
+        bold: normalized.includes('bold'),
+        italic: normalized.includes('italic'),
+    };
+}
+
+function hasUnderline(textDecoration = '') {
+    return String(textDecoration).toLowerCase().includes('underline');
+}
+
+function composeFontStyle({ bold = false, italic = false } = {}) {
+    if (bold && italic) return 'bold italic';
+    if (bold) return 'bold';
+    if (italic) return 'italic';
+    return 'normal';
 }
 
 function clampZoom(value) {
@@ -150,17 +172,107 @@ async function addMockupByFrameId(frameId, options) {
 }
 
 function populateCanvasGradientOptions() {
-    if (!UI.bgGradient) return;
-    UI.bgGradient.innerHTML = '';
-    CANVAS_GRADIENTS.forEach((preset) => {
-        UI.bgGradient.appendChild(new Option(preset.name, preset.id));
+    populateGradientOptions(UI.bgGradient, {
+        includeNone: true,
+        defaultValue: getDefaultCanvasGradientId(),
     });
-    UI.bgGradient.value = getDefaultCanvasGradientId();
 }
 
-// ==========================================================================
-// INITIALIZATION - initializeApp()
-// ==========================================================================
+function populateTextGradientOptions() {
+    populateGradientOptions(UI.canvasTextColorGradient, { defaultValue: 'solid' });
+    populateGradientOptions(UI.canvasTextHighlightGradient, {
+        includeNone: true,
+        defaultValue: 'none',
+    });
+}
+
+function populateGradientOptions(selectEl, { includeNone = false, defaultValue = 'solid' } = {}) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
+    if (includeNone) selectEl.appendChild(new Option('None', 'none'));
+    CANVAS_GRADIENTS.forEach((preset) => {
+        if (preset.id === 'none') return;
+        selectEl.appendChild(new Option(preset.name, preset.id));
+    });
+    selectEl.value = defaultValue;
+}
+
+function syncGradientEditorsVisibility() {
+    gradientEditors.forEach((editor) => editor?.syncVisibility?.());
+}
+
+function ensureCanvasEnabledForOverlay() {
+    if (!UI.canvasEnabled || UI.canvasEnabled.checked) return;
+    UI.canvasEnabled.checked = true;
+    layoutManager?.applyCanvasMode();
+    syncGradientEditorsVisibility();
+}
+
+function createTextCustomGradientEditor({ modeSource, refs, textGradientKey }) {
+    return createGradientEditor({
+        ui: UI,
+        isTypingInFormField,
+        modeSources: [modeSource],
+        refs,
+        onChange: () => {
+            const selected = getSelectedCanvasTextSnapshot();
+            if (selected?.[textGradientKey] === 'custom') {
+                applyCanvasTextStyle({ [textGradientKey]: 'custom' });
+            }
+            historyManager?.push();
+        },
+    });
+}
+
+function withSelectedCanvasText(onSelected) {
+    const selected = getSelectedCanvasTextSnapshot();
+    if (!selected) return;
+    onSelected(selected);
+    syncCanvasTextPanel();
+}
+
+function getGradientEditorRefs(prefix) {
+    const capitalizedPrefix = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+    return {
+        panel: UI[`${prefix}CustomPanel`],
+        editor: UI[`${prefix}Editor`],
+        bar: UI[`${prefix}Bar`],
+        stopsLayer: UI[`${prefix}StopsLayer`],
+        stopColor: UI[`${prefix}StopColor`],
+        angle: UI[`${prefix}Angle`],
+        angleValue: UI[`${prefix}AngleValue`],
+        data: UI[`custom${capitalizedPrefix}Data`],
+    };
+}
+
+function syncCanvasTextPanel() {
+    const selected = getSelectedCanvasTextSnapshot();
+    const enabled = !!UI.canvasEnabled?.checked && !!selected;
+    UI.canvasTextPanel?.classList.toggle('is-disabled', !enabled);
+    if (!enabled) return;
+    const styleState = parseFontStyle(selected.fontStyle);
+    if (UI.canvasTextInput) UI.canvasTextInput.value = selected.text || '';
+    if (UI.canvasTextFontFamily) UI.canvasTextFontFamily.value = selected.fontFamily || 'Arial';
+    if (UI.canvasTextSize) UI.canvasTextSize.value = `${Math.max(8, Math.round(selected.fontSize || 24))}`;
+    if (UI.canvasTextColor) UI.canvasTextColor.value = selected.fill || '#2f3a4f';
+    if (UI.canvasTextColorGradient) UI.canvasTextColorGradient.value = selected.textGradientId || 'solid';
+    const hasHighlight = !!(selected.textHighlight || '').trim();
+    if (UI.canvasTextHighlight) UI.canvasTextHighlight.value = selected.textHighlight || '#fff0a8';
+    if (UI.canvasTextHighlightGradient) {
+        UI.canvasTextHighlightGradient.value = hasHighlight
+            ? (selected.textHighlightGradientId || 'solid')
+            : 'none';
+    }
+    if (UI.canvasTextAlign) UI.canvasTextAlign.value = selected.align || 'left';
+    UI.canvasTextBoldBtn?.classList.toggle('is-active', styleState.bold);
+    UI.canvasTextItalicBtn?.classList.toggle('is-active', styleState.italic);
+    UI.canvasTextUnderlineBtn?.classList.toggle('is-active', hasUnderline(selected.textDecoration));
+}
+
+function applyCanvasTextStyle(partial = {}) {
+    updateSelectedCanvasText(partial);
+}
+
 async function initializeApp() {
     // --- initial UI setup ---
     const groupedFrames = frames.reduce((acc, frame) => {
@@ -181,6 +293,7 @@ async function initializeApp() {
         UI.frameSelect.options[0].selected = true;
     }
     populateCanvasGradientOptions();
+    populateTextGradientOptions();
     // responsive default canvas size for mobile
     if (window.innerWidth <= 768) { 
         UI.docWidth.value = 350; 
@@ -239,17 +352,29 @@ async function initializeApp() {
         redo: () => historyManager?.redo(),
         isTypingInFormField,
     });
-    gradientEditor = createGradientEditor({
-        ui: UI,
-        isTypingInFormField,
-        onChange: () => {
-            Helpers.updateMockupBackground();
-            updateKonvaCanvasBackground();
-            historyManager?.push();
-        },
-    });
-    gradientEditor.init();
+    gradientEditors = [
+        createGradientEditor({
+            ui: UI,
+            isTypingInFormField,
+            modeSources: [UI.bgGradient],
+            onChange: () => {
+                Helpers.updateMockupBackground();
+                updateKonvaCanvasBackground();
+                historyManager?.push();
+            },
+        }),
+        ...[
+            { modeSource: UI.canvasTextColorGradient, textGradientKey: 'textGradientId', refPrefix: 'textGradient' },
+            { modeSource: UI.canvasTextHighlightGradient, textGradientKey: 'textHighlightGradientId', refPrefix: 'textHighlightGradient' },
+        ].map((config) => createTextCustomGradientEditor({
+            modeSource: config.modeSource,
+            textGradientKey: config.textGradientKey,
+            refs: getGradientEditorRefs(config.refPrefix),
+        })),
+    ];
+    gradientEditors.forEach((editor) => editor.init());
     layoutManager.applyCanvasMode({ skipHistory: true });
+    syncCanvasTextPanel();
     initExport();
     resetViewportTransform = initZoomPanControls({
         previewWrap: document.querySelector('.preview-wrap'),
@@ -278,16 +403,74 @@ async function initializeApp() {
     bindCanvasSizeCommitInput(UI.docHeight);
     UI.canvasEnabled?.addEventListener('change', () => {
         layoutManager?.applyCanvasMode();
-        gradientEditor?.syncVisibility?.();
+        syncGradientEditorsVisibility();
+        syncCanvasTextPanel();
     });
     UI.canvasImageBtn?.addEventListener('click', () => {
-        if (UI.canvasEnabled && !UI.canvasEnabled.checked) {
-            UI.canvasEnabled.checked = true;
-            layoutManager?.applyCanvasMode();
-            gradientEditor?.syncVisibility?.();
-        }
+        ensureCanvasEnabledForOverlay();
         UI.bgImageInput?.click();
     });
+    UI.canvasTextBtn?.addEventListener('click', () => {
+        ensureCanvasEnabledForOverlay();
+        addCanvasText();
+        syncCanvasTextPanel();
+        UI.canvasTextInput?.focus();
+        UI.canvasTextInput?.select();
+    });
+    UI.canvasTextInput?.addEventListener('input', () => {
+        applyCanvasTextStyle({ text: UI.canvasTextInput.value || ' ' });
+    });
+    UI.canvasTextSize?.addEventListener('input', () => {
+        const size = Number(UI.canvasTextSize.value) || 24;
+        applyCanvasTextStyle({ fontSize: Math.max(8, size) });
+    });
+    UI.canvasTextFontFamily?.addEventListener('change', () => {
+        applyCanvasTextStyle({ fontFamily: UI.canvasTextFontFamily.value || 'Arial' });
+    });
+    UI.canvasTextColor?.addEventListener('input', () => {
+        applyCanvasTextStyle({ fill: UI.canvasTextColor.value || '#2f3a4f' });
+        syncCanvasTextPanel();
+    });
+    UI.canvasTextColorGradient?.addEventListener('change', () => {
+        applyCanvasTextStyle({ textGradientId: UI.canvasTextColorGradient.value || 'solid' });
+        syncCanvasTextPanel();
+    });
+    UI.canvasTextHighlight?.addEventListener('input', () => {
+        if (UI.canvasTextHighlightGradient?.value === 'none') {
+            UI.canvasTextHighlightGradient.value = 'solid';
+        }
+        applyCanvasTextStyle({
+            textHighlight: UI.canvasTextHighlight.value || '',
+            textHighlightGradientId: UI.canvasTextHighlightGradient?.value || 'solid',
+        });
+        syncCanvasTextPanel();
+    });
+    UI.canvasTextHighlightGradient?.addEventListener('change', () => {
+        const nextMode = UI.canvasTextHighlightGradient.value || 'none';
+        applyCanvasTextStyle({
+            textHighlight: nextMode === 'none' ? '' : (UI.canvasTextHighlight?.value || '#fff0a8'),
+            textHighlightGradientId: nextMode === 'none' ? 'solid' : nextMode,
+        });
+        syncCanvasTextPanel();
+    });
+    UI.canvasTextAlign?.addEventListener('change', () => {
+        applyCanvasTextStyle({ align: UI.canvasTextAlign.value || 'left' });
+    });
+    UI.canvasTextBoldBtn?.addEventListener('click', () => withSelectedCanvasText((selected) => {
+        const next = parseFontStyle(selected.fontStyle);
+        next.bold = !next.bold;
+        applyCanvasTextStyle({ fontStyle: composeFontStyle(next) });
+    }));
+    UI.canvasTextItalicBtn?.addEventListener('click', () => withSelectedCanvasText((selected) => {
+        const next = parseFontStyle(selected.fontStyle);
+        next.italic = !next.italic;
+        applyCanvasTextStyle({ fontStyle: composeFontStyle(next) });
+    }));
+    UI.canvasTextUnderlineBtn?.addEventListener('click', () => withSelectedCanvasText((selected) => {
+        applyCanvasTextStyle({
+            textDecoration: hasUnderline(selected.textDecoration) ? '' : 'underline',
+        });
+    }));
     UI.bgImageInput?.addEventListener('change', async (event) => {
         const file = event.target?.files?.[0];
         if (!file) {
@@ -320,6 +503,9 @@ async function initializeApp() {
     window.addEventListener('canvas-bg-images-changed', () => {
         historyManager?.push();
     });
+    window.addEventListener('canvas-overlay-selection-changed', () => {
+        syncCanvasTextPanel();
+    });
     getStage()?.on('dragend transformend', () => historyManager?.push());
     layoutManager.bindWindowResize();
 
@@ -329,10 +515,6 @@ async function initializeApp() {
 
 window.addEventListener('DOMContentLoaded', initializeApp);
 
-
-// ==========================================================================
-// IMAGE PLACING - placeImageInMockup()
-// ==========================================================================
 export function placeImageInMockup(img, mockup) {
     mockup.find('.upload-placeholder').forEach(node => node.destroy());
     mockup.find('.screenshot-container').forEach(node => node.destroy());

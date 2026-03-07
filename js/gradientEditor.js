@@ -44,7 +44,18 @@ function defaultStops() {
     ];
 }
 
-export function createGradientEditor({ ui, onChange, isTypingInFormField } = {}) {
+export function createGradientEditor({ ui, onChange, isTypingInFormField, refs = {}, modeSources = [] } = {}) {
+    const controls = {
+        panel: refs.panel || ui.gradientCustomPanel,
+        editor: refs.editor || ui.gradientEditor,
+        bar: refs.bar || ui.gradientBar,
+        stopsLayer: refs.stopsLayer || ui.gradientStopsLayer,
+        stopColor: refs.stopColor || ui.gradientStopColor,
+        angle: refs.angle || ui.gradientAngle,
+        angleValue: refs.angleValue || ui.gradientAngleValue,
+        data: refs.data || ui.customGradientData,
+    };
+    const activeModeSources = modeSources.length ? modeSources : [ui.bgGradient];
     const state = {
         angle: getDefaultCustomGradient().angle,
         stops: defaultStops(),
@@ -68,7 +79,8 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
     }
 
     function isCustomModeActive() {
-        return !!ui.canvasEnabled?.checked && ui.bgGradient?.value === CUSTOM_GRADIENT_ID;
+        if (!ui.canvasEnabled?.checked) return false;
+        return activeModeSources.some((source) => source?.value === CUSTOM_GRADIENT_ID);
     }
 
     function getSelectedStop() {
@@ -87,14 +99,14 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
     }
 
     function renderTrackBackground() {
-        if (!ui.gradientBar) return;
+        if (!controls.bar) return;
         const stops = state.stops.map((stop) => `${stop.color} ${Math.round(stop.position * 100)}%`).join(', ');
-        ui.gradientBar.style.background = `linear-gradient(${TRACK_PREVIEW_ANGLE}deg, ${stops})`;
+        controls.bar.style.background = `linear-gradient(${TRACK_PREVIEW_ANGLE}deg, ${stops})`;
     }
 
     function renderStops() {
-        if (!ui.gradientStopsLayer) return;
-        ui.gradientStopsLayer.innerHTML = '';
+        if (!controls.stopsLayer) return;
+        controls.stopsLayer.innerHTML = '';
         for (const stop of state.stops) {
             const button = document.createElement('button');
             button.type = 'button';
@@ -103,13 +115,13 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
             button.dataset.stopId = stop.id;
             button.style.left = `${stop.position * 100}%`;
             button.style.setProperty('--stop-color', stop.color);
-            ui.gradientStopsLayer.appendChild(button);
+            controls.stopsLayer.appendChild(button);
         }
     }
 
     function render() {
-        if (ui.gradientAngle) ui.gradientAngle.value = `${Math.round(state.angle)}`;
-        if (ui.gradientAngleValue) ui.gradientAngleValue.textContent = `${Math.round(state.angle)}deg`;
+        if (controls.angle) controls.angle.value = `${Math.round(state.angle)}`;
+        if (controls.angleValue) controls.angleValue.textContent = `${Math.round(state.angle)}deg`;
         renderTrackBackground();
         renderStops();
     }
@@ -118,7 +130,7 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
         const serialized = serializeState();
         if (serialized === lastSerializedState) return;
         lastSerializedState = serialized;
-        if (ui.customGradientData) ui.customGradientData.value = serialized;
+        if (controls.data) controls.data.value = serialized;
         if (notify) onChange?.();
     }
 
@@ -129,10 +141,10 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
 
     function syncVisibility() {
         const showPanel = isCustomModeActive();
-        ui.gradientCustomPanel?.classList.toggle('is-disabled', !showPanel);
-        ui.gradientEditor?.classList.toggle('is-readonly', !showPanel);
-        if (ui.gradientAngle) ui.gradientAngle.disabled = !showPanel;
-        if (ui.gradientStopColor) ui.gradientStopColor.disabled = !showPanel;
+        controls.panel?.classList.toggle('is-disabled', !showPanel);
+        controls.editor?.classList.toggle('is-readonly', !showPanel);
+        if (controls.angle) controls.angle.disabled = !showPanel;
+        if (controls.stopColor) controls.stopColor.disabled = !showPanel;
     }
 
     function normalizeLoadedStops(stops) {
@@ -153,7 +165,7 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
     function hydrateFromHiddenData() {
         let nextState = null;
         try {
-            nextState = JSON.parse(ui.customGradientData?.value || '{}');
+            nextState = JSON.parse(controls.data?.value || '{}');
         } catch {
             nextState = null;
         }
@@ -173,7 +185,7 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
     }
 
     function getPositionAtClientX(clientX) {
-        const rect = ui.gradientBar?.getBoundingClientRect();
+        const rect = controls.bar?.getBoundingClientRect();
         if (!rect || rect.width <= 0) return 0;
         return clamp((clientX - rect.left) / rect.width, 0, 1);
     }
@@ -225,12 +237,15 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
     }
 
     function bindEvents() {
-        ui.bgGradient?.addEventListener('change', () => {
+        const handleModeChange = () => {
             syncVisibility();
             onChange?.();
+        };
+        activeModeSources.forEach((source) => {
+            source?.addEventListener('change', handleModeChange);
         });
 
-        ui.gradientEditor?.addEventListener('click', (event) => {
+        controls.editor?.addEventListener('click', (event) => {
             if (!isCustomModeActive()) return;
             const target = event.target instanceof Element ? event.target : null;
             if (target?.closest('.gradient-stop-handle')) return;
@@ -238,7 +253,7 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
             addStopAtPosition(getPositionAtClientX(event.clientX));
         });
 
-        ui.gradientStopsLayer?.addEventListener('pointerdown', (event) => {
+        controls.stopsLayer?.addEventListener('pointerdown', (event) => {
             const target = event.target instanceof Element ? event.target : null;
             const handle = target?.closest('.gradient-stop-handle');
             if (!handle || !isCustomModeActive()) return;
@@ -275,21 +290,21 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
                 return;
             }
             const selectedStop = state.stops.find((stop) => stop.id === selectedStopId);
-            if (selectedStop && ui.gradientStopColor) {
-                ui.gradientStopColor.value = selectedStop.color;
-                ui.gradientStopColor.click();
+            if (selectedStop && controls.stopColor) {
+                controls.stopColor.value = selectedStop.color;
+                controls.stopColor.click();
             }
         });
 
-        ui.gradientStopColor?.addEventListener('input', () => {
+        controls.stopColor?.addEventListener('input', () => {
             const selectedStop = getSelectedStop();
             if (!selectedStop) return;
-            selectedStop.color = normalizeHexColor(ui.gradientStopColor.value, selectedStop.color);
+            selectedStop.color = normalizeHexColor(controls.stopColor.value, selectedStop.color);
             commitState();
         });
 
-        ui.gradientAngle?.addEventListener('input', () => {
-            state.angle = clamp(Number(ui.gradientAngle.value) || 0, 0, 360);
+        controls.angle?.addEventListener('input', () => {
+            state.angle = clamp(Number(controls.angle.value) || 0, 0, 360);
             commitState();
         });
 
@@ -302,7 +317,7 @@ export function createGradientEditor({ ui, onChange, isTypingInFormField } = {})
         });
 
         window.addEventListener('pointerdown', (event) => {
-            if (!ui.gradientCustomPanel?.contains(event.target)) {
+            if (!controls.panel?.contains(event.target)) {
                 state.editorFocused = false;
             }
         });

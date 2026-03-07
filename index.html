@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600;700&family=Rethink+Sans:ital,wght@0,400..800;1,400..800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;700&family=Fira+Sans:wght@400;500;700&family=Inter:wght@400;500;700&family=Lora:wght@400;500;700&family=Manrope:wght@400;500;600;700&family=Montserrat:wght@400;500;700&family=Playfair+Display:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Rethink+Sans:ital,wght@0,400..800;1,400..800&family=Roboto+Slab:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
 
   <script src="https://cdn.jsdelivr.net/npm/konva@9/konva.min.js"></script>
 </head>
@@ -128,11 +128,101 @@
           <input type="color" id="gradientStopColor" class="gradient-stop-color-input" value="#8ec5ff">
           <input type="hidden" id="customGradientData" value='{"angle":135,"stops":[{"id":"gs-1","position":0,"color":"#e0f7ff"},{"id":"gs-2","position":1,"color":"#8ec5ff"}]}'>
         </div>
-        <div class="button-row">
+        <div class="button-row stacked">
           <button id="canvasImageBtn" type="button" class="btn accent-purple" title="Add an image on top of the canvas background">
             <img src="icons/add_screenshot_placeholder.svg" alt="Add Image">
             <span>Add Image</span>
           </button>
+          <button id="canvasTextBtn" type="button" class="btn accent-purple" title="Add text on top of the canvas background">
+            <img src="icons/add_text_icon.svg" alt="Add Text">
+            <span>Add Text</span>
+          </button>
+        </div>
+        <div id="canvasTextPanel" class="canvas-text-panel is-disabled">
+          <label for="canvasTextInput">Text</label>
+          <input id="canvasTextInput" type="text" placeholder="Type text" maxlength="160" autocomplete="off">
+          <div class="canvas-text-controls canvas-text-controls-top">
+            <div class="select-wrapper">
+              <select id="canvasTextFontFamily" title="Font family">
+                <option value="Arial" selected>Arial</option>
+                <option value="Manrope">Manrope</option>
+                <option value="Rethink Sans">Rethink Sans</option>
+                <option value="Poppins">Poppins</option>
+                <option value="Inter">Inter</option>
+                <option value="Montserrat">Montserrat</option>
+                <option value="DM Sans">DM Sans</option>
+                <option value="Fira Sans">Fira Sans</option>
+                <option value="Space Grotesk">Space Grotesk</option>
+                <option value="SF Pro Text">SF Pro Text</option>
+                <option value="SF Pro Display">SF Pro Display</option>
+                <option value="SF UI Text">SF UI Text</option>
+                <option value="SF UI Display">SF UI Display</option>
+                <option value="New York">New York</option>
+                <option value="SF Mono">SF Mono</option>
+                <option value="Helvetica Neue">Helvetica Neue</option>
+                <option value="Avenir Next">Avenir Next</option>
+                <option value="Cormorant Garamond">Cormorant Garamond</option>
+                <option value="Playfair Display">Playfair Display</option>
+                <option value="Lora">Lora</option>
+                <option value="Roboto Slab">Roboto Slab</option>
+                <option value="Bebas Neue">Bebas Neue</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Courier New">Courier New</option>
+              </select>
+            </div>
+            <input id="canvasTextSize" type="number" min="8" max="180" value="36" title="Text size">
+            <button id="canvasTextBoldBtn" type="button" class="text-style-btn" title="Bold">B</button>
+            <button id="canvasTextItalicBtn" type="button" class="text-style-btn" title="Italic">I</button>
+            <button id="canvasTextUnderlineBtn" type="button" class="text-style-btn" title="Underline">U</button>
+          </div>
+          <div class="canvas-text-controls canvas-text-controls-bottom">
+            <div class="select-wrapper text-gradient-select-wrapper">
+              <select id="canvasTextColorGradient" title="Text gradient">
+                <option value="solid" selected>Solid</option>
+              </select>
+            </div>
+            <input id="canvasTextColor" type="color" value="#2f3a4f" title="Text color">
+            <div class="select-wrapper text-gradient-select-wrapper">
+              <select id="canvasTextHighlightGradient" title="Highlight gradient">
+                <option value="none">None</option>
+                <option value="solid" selected>Solid</option>
+              </select>
+            </div>
+            <input id="canvasTextHighlight" type="color" value="#fff0a8" title="Highlight fill color">
+            <div class="select-wrapper">
+              <select id="canvasTextAlign" title="Text align">
+                <option value="left">Left</option>
+                <option value="center" selected>Center</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
+          </div>
+          <div id="textGradientCustomPanel" class="gradient-custom-panel is-disabled">
+            <div id="textGradientEditor" class="gradient-editor" title="Click to add gradient stops">
+              <div id="textGradientBar" class="gradient-bar"></div>
+              <div id="textGradientStopsLayer" class="gradient-stops-layer"></div>
+            </div>
+            <div class="gradient-controls-row">
+              <label for="textGradientAngle">Angle</label>
+              <input type="range" id="textGradientAngle" min="0" max="360" value="135" title="Text gradient angle">
+              <span id="textGradientAngleValue" class="gradient-angle-value">135deg</span>
+            </div>
+            <input type="color" id="textGradientStopColor" class="gradient-stop-color-input" value="#8ec5ff">
+            <input type="hidden" id="customTextGradientData" value='{"angle":135,"stops":[{"id":"gs-1","position":0,"color":"#e0f7ff"},{"id":"gs-2","position":1,"color":"#8ec5ff"}]}'>
+          </div>
+          <div id="textHighlightGradientCustomPanel" class="gradient-custom-panel is-disabled">
+            <div id="textHighlightGradientEditor" class="gradient-editor" title="Click to add gradient stops">
+              <div id="textHighlightGradientBar" class="gradient-bar"></div>
+              <div id="textHighlightGradientStopsLayer" class="gradient-stops-layer"></div>
+            </div>
+            <div class="gradient-controls-row">
+              <label for="textHighlightGradientAngle">Angle</label>
+              <input type="range" id="textHighlightGradientAngle" min="0" max="360" value="135" title="Highlight gradient angle">
+              <span id="textHighlightGradientAngleValue" class="gradient-angle-value">135deg</span>
+            </div>
+            <input type="color" id="textHighlightGradientStopColor" class="gradient-stop-color-input" value="#8ec5ff">
+            <input type="hidden" id="customTextHighlightGradientData" value='{"angle":135,"stops":[{"id":"gs-1","position":0,"color":"#fff8d7"},{"id":"gs-2","position":1,"color":"#ffe6a7"}]}'>
+          </div>
         </div>
       </div>
     </div>
