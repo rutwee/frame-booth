@@ -15,11 +15,6 @@ import {
     restoreCanvasBackgroundImageState,
 } from './konvaSetup.js';
 import { initExport, updateDownloadSceneButtonState } from './export.js';
-import {
-    detectIPhoneScreenshotProfile,
-    getTargetIslandLocalRect,
-    calculateScreenshotPlacement,
-} from './screenshotUtils.js';
 import { initZoomPanControls } from './viewportControls.js';
 import { createHistoryManager } from './historyManager.js';
 import { createUploadManager } from './uploadManager.js';
@@ -27,6 +22,9 @@ import { createFrameActions } from './frameActions.js';
 import { createLayoutManager } from './layoutManager.js';
 import { CANVAS_GRADIENTS, getDefaultCanvasGradientId } from './canvasGradients.js';
 import { createGradientEditor } from './gradientEditor.js';
+import { placeImageInMockup } from './mockupPlacement.js';
+import { initResponsiveToolbarToggle } from './toolbarToggle.js';
+import { createCanvasTextPanel } from './canvasTextPanel.js';
 
 const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MIN_ZOOM = 0.1;
@@ -38,6 +36,7 @@ let uploadManager = null;
 let frameActions = null;
 let layoutManager = null;
 let gradientEditors = [];
+let canvasTextPanel = null;
 let framesChangedHistoryTimer = null;
 
 function clamp(value, min, max) {
@@ -50,25 +49,6 @@ function isTypingInFormField() {
     if (EDITABLE_TAGS.includes(active.tagName)) return true;
     if (active.isContentEditable) return true;
     return !!active.closest?.('#canvasTextPanel');
-}
-
-function parseFontStyle(fontStyle = '') {
-    const normalized = String(fontStyle).toLowerCase();
-    return {
-        bold: normalized.includes('bold'),
-        italic: normalized.includes('italic'),
-    };
-}
-
-function hasUnderline(textDecoration = '') {
-    return String(textDecoration).toLowerCase().includes('underline');
-}
-
-function composeFontStyle({ bold = false, italic = false } = {}) {
-    if (bold && italic) return 'bold italic';
-    if (bold) return 'bold';
-    if (italic) return 'italic';
-    return 'normal';
 }
 
 function clampZoom(value) {
@@ -117,48 +97,6 @@ function bindCanvasSizeCommitInput(inputEl) {
         e.preventDefault();
         inputEl.blur();
     });
-}
-
-function initResponsiveToolbarToggle() {
-    const toolbar = document.querySelector('#toolbarPanel');
-    const toggleBtn = document.querySelector('#toolbarToggleBtn');
-    const backdrop = document.querySelector('#toolbarBackdrop');
-    if (!toolbar || !toggleBtn || !backdrop) return;
-
-    const phoneMediaQuery = window.matchMedia('(max-width: 768px)');
-    const syncToggleButtonVisibility = () => {
-        const isPhone = phoneMediaQuery.matches;
-        toggleBtn.style.display = isPhone ? 'grid' : 'none';
-        if (!isPhone) {
-            setOpenState(false);
-        }
-    };
-    const setOpenState = (open) => {
-        const shouldOpen = !!open && phoneMediaQuery.matches;
-        document.body.classList.toggle('toolbar-open', shouldOpen);
-        toggleBtn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-        backdrop.hidden = !shouldOpen;
-    };
-
-    toggleBtn.addEventListener('click', () => {
-        const isOpen = document.body.classList.contains('toolbar-open');
-        setOpenState(!isOpen);
-    });
-    backdrop.addEventListener('click', () => setOpenState(false));
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') setOpenState(false);
-    });
-    const onMediaChange = (e) => {
-        if (!e.matches) setOpenState(false);
-        syncToggleButtonVisibility();
-    };
-    if (typeof phoneMediaQuery.addEventListener === 'function') {
-        phoneMediaQuery.addEventListener('change', onMediaChange);
-    } else if (typeof phoneMediaQuery.addListener === 'function') {
-        phoneMediaQuery.addListener(onMediaChange);
-    }
-    setOpenState(false);
-    syncToggleButtonVisibility();
 }
 
 async function addMockupByFrameId(frameId, options) {
@@ -217,18 +155,12 @@ function createTextCustomGradientEditor({ modeSource, refs, textGradientKey }) {
         onChange: () => {
             const selected = getSelectedCanvasTextSnapshot();
             if (selected?.[textGradientKey] === 'custom') {
-                applyCanvasTextStyle({ [textGradientKey]: 'custom' });
+                updateSelectedCanvasText({ [textGradientKey]: 'custom' });
+                canvasTextPanel?.sync();
             }
             historyManager?.push();
         },
     });
-}
-
-function withSelectedCanvasText(onSelected) {
-    const selected = getSelectedCanvasTextSnapshot();
-    if (!selected) return;
-    onSelected(selected);
-    syncCanvasTextPanel();
 }
 
 function getGradientEditorRefs(prefix) {
@@ -243,34 +175,6 @@ function getGradientEditorRefs(prefix) {
         angleValue: UI[`${prefix}AngleValue`],
         data: UI[`custom${capitalizedPrefix}Data`],
     };
-}
-
-function syncCanvasTextPanel() {
-    const selected = getSelectedCanvasTextSnapshot();
-    const enabled = !!UI.canvasEnabled?.checked && !!selected;
-    UI.canvasTextPanel?.classList.toggle('is-disabled', !enabled);
-    if (!enabled) return;
-    const styleState = parseFontStyle(selected.fontStyle);
-    if (UI.canvasTextInput) UI.canvasTextInput.value = selected.text || '';
-    if (UI.canvasTextFontFamily) UI.canvasTextFontFamily.value = selected.fontFamily || 'Arial';
-    if (UI.canvasTextSize) UI.canvasTextSize.value = `${Math.max(8, Math.round(selected.fontSize || 24))}`;
-    if (UI.canvasTextColor) UI.canvasTextColor.value = selected.fill || '#2f3a4f';
-    if (UI.canvasTextColorGradient) UI.canvasTextColorGradient.value = selected.textGradientId || 'solid';
-    const hasHighlight = !!(selected.textHighlight || '').trim();
-    if (UI.canvasTextHighlight) UI.canvasTextHighlight.value = selected.textHighlight || '#fff0a8';
-    if (UI.canvasTextHighlightGradient) {
-        UI.canvasTextHighlightGradient.value = hasHighlight
-            ? (selected.textHighlightGradientId || 'solid')
-            : 'none';
-    }
-    if (UI.canvasTextAlign) UI.canvasTextAlign.value = selected.align || 'left';
-    UI.canvasTextBoldBtn?.classList.toggle('is-active', styleState.bold);
-    UI.canvasTextItalicBtn?.classList.toggle('is-active', styleState.italic);
-    UI.canvasTextUnderlineBtn?.classList.toggle('is-active', hasUnderline(selected.textDecoration));
-}
-
-function applyCanvasTextStyle(partial = {}) {
-    updateSelectedCanvasText(partial);
 }
 
 async function initializeApp() {
@@ -373,8 +277,16 @@ async function initializeApp() {
         })),
     ];
     gradientEditors.forEach((editor) => editor.init());
+    canvasTextPanel = createCanvasTextPanel({
+        ui: UI,
+        getSelectedSnapshot: getSelectedCanvasTextSnapshot,
+        updateSelected: updateSelectedCanvasText,
+        ensureCanvasEnabled: ensureCanvasEnabledForOverlay,
+        addCanvasText,
+    });
+    canvasTextPanel.bind();
     layoutManager.applyCanvasMode({ skipHistory: true });
-    syncCanvasTextPanel();
+    canvasTextPanel.sync();
     initExport();
     resetViewportTransform = initZoomPanControls({
         previewWrap: document.querySelector('.preview-wrap'),
@@ -404,73 +316,12 @@ async function initializeApp() {
     UI.canvasEnabled?.addEventListener('change', () => {
         layoutManager?.applyCanvasMode();
         syncGradientEditorsVisibility();
-        syncCanvasTextPanel();
+        canvasTextPanel?.sync();
     });
     UI.canvasImageBtn?.addEventListener('click', () => {
         ensureCanvasEnabledForOverlay();
         UI.bgImageInput?.click();
     });
-    UI.canvasTextBtn?.addEventListener('click', () => {
-        ensureCanvasEnabledForOverlay();
-        addCanvasText();
-        syncCanvasTextPanel();
-        UI.canvasTextInput?.focus();
-        UI.canvasTextInput?.select();
-    });
-    UI.canvasTextInput?.addEventListener('input', () => {
-        applyCanvasTextStyle({ text: UI.canvasTextInput.value || ' ' });
-    });
-    UI.canvasTextSize?.addEventListener('input', () => {
-        const size = Number(UI.canvasTextSize.value) || 24;
-        applyCanvasTextStyle({ fontSize: Math.max(8, size) });
-    });
-    UI.canvasTextFontFamily?.addEventListener('change', () => {
-        applyCanvasTextStyle({ fontFamily: UI.canvasTextFontFamily.value || 'Arial' });
-    });
-    UI.canvasTextColor?.addEventListener('input', () => {
-        applyCanvasTextStyle({ fill: UI.canvasTextColor.value || '#2f3a4f' });
-        syncCanvasTextPanel();
-    });
-    UI.canvasTextColorGradient?.addEventListener('change', () => {
-        applyCanvasTextStyle({ textGradientId: UI.canvasTextColorGradient.value || 'solid' });
-        syncCanvasTextPanel();
-    });
-    UI.canvasTextHighlight?.addEventListener('input', () => {
-        if (UI.canvasTextHighlightGradient?.value === 'none') {
-            UI.canvasTextHighlightGradient.value = 'solid';
-        }
-        applyCanvasTextStyle({
-            textHighlight: UI.canvasTextHighlight.value || '',
-            textHighlightGradientId: UI.canvasTextHighlightGradient?.value || 'solid',
-        });
-        syncCanvasTextPanel();
-    });
-    UI.canvasTextHighlightGradient?.addEventListener('change', () => {
-        const nextMode = UI.canvasTextHighlightGradient.value || 'none';
-        applyCanvasTextStyle({
-            textHighlight: nextMode === 'none' ? '' : (UI.canvasTextHighlight?.value || '#fff0a8'),
-            textHighlightGradientId: nextMode === 'none' ? 'solid' : nextMode,
-        });
-        syncCanvasTextPanel();
-    });
-    UI.canvasTextAlign?.addEventListener('change', () => {
-        applyCanvasTextStyle({ align: UI.canvasTextAlign.value || 'left' });
-    });
-    UI.canvasTextBoldBtn?.addEventListener('click', () => withSelectedCanvasText((selected) => {
-        const next = parseFontStyle(selected.fontStyle);
-        next.bold = !next.bold;
-        applyCanvasTextStyle({ fontStyle: composeFontStyle(next) });
-    }));
-    UI.canvasTextItalicBtn?.addEventListener('click', () => withSelectedCanvasText((selected) => {
-        const next = parseFontStyle(selected.fontStyle);
-        next.italic = !next.italic;
-        applyCanvasTextStyle({ fontStyle: composeFontStyle(next) });
-    }));
-    UI.canvasTextUnderlineBtn?.addEventListener('click', () => withSelectedCanvasText((selected) => {
-        applyCanvasTextStyle({
-            textDecoration: hasUnderline(selected.textDecoration) ? '' : 'underline',
-        });
-    }));
     UI.bgImageInput?.addEventListener('change', async (event) => {
         const file = event.target?.files?.[0];
         if (!file) {
@@ -504,7 +355,7 @@ async function initializeApp() {
         historyManager?.push();
     });
     window.addEventListener('canvas-overlay-selection-changed', () => {
-        syncCanvasTextPanel();
+        canvasTextPanel?.sync();
     });
     getStage()?.on('dragend transformend', () => historyManager?.push());
     layoutManager.bindWindowResize();
@@ -514,65 +365,3 @@ async function initializeApp() {
 }
 
 window.addEventListener('DOMContentLoaded', initializeApp);
-
-export function placeImageInMockup(img, mockup) {
-    mockup.find('.upload-placeholder').forEach(node => node.destroy());
-    mockup.find('.screenshot-container').forEach(node => node.destroy());
-
-    const frameId = mockup.getAttr('frameId');
-    const frameData = frames.find(f => f.id === frameId);
-    if (!frameData || !frameData.screen) return;
-
-    const frameNode = mockup.getChildren(node => node.getClassName() === 'Image')[0];
-    const frameImage = frameNode.image();
-    if (!frameImage) return;
-    const frameScale = frameNode.width() / frameImage.width;
-
-    const screenContainer = {
-        x: frameData.screen.x * frameScale, y: frameData.screen.y * frameScale,
-        width: frameData.screen.width * frameScale, height: frameData.screen.height * frameScale,
-    };
-    const targetIslandRect = getTargetIslandLocalRect(frameData, frameScale);
-    const sourceProfile = detectIPhoneScreenshotProfile(img.width, img.height);
-
-    const clipGroup = new Konva.Group({
-        x: screenContainer.x, y: screenContainer.y, name: 'screenshot-container',
-        clipFunc: function(ctx) {
-            const scaledRadius = frameData.screen.cornerRadius * frameScale;
-            ctx.beginPath();
-            ctx.roundRect(0, 0, screenContainer.width, screenContainer.height, scaledRadius);
-            if (targetIslandRect) {
-                ctx.roundRect(
-                    targetIslandRect.x,
-                    targetIslandRect.y,
-                    targetIslandRect.width,
-                    targetIslandRect.height,
-                    targetIslandRect.cornerRadius
-                );
-            }
-            ctx.closePath();
-        }
-    });
-
-    const photoPlacement = calculateScreenshotPlacement(
-        img,
-        screenContainer,
-        targetIslandRect,
-        sourceProfile
-    );
-
-    const photo = new Konva.Image({
-        image: img,
-        x: photoPlacement.x,
-        y: photoPlacement.y,
-        width: photoPlacement.width,
-        height: photoPlacement.height,
-        name: 'screenshot',
-        imageSmoothingEnabled: true 
-    });
-
-    clipGroup.add(photo);
-    mockup.add(clipGroup);
-    clipGroup.moveToBottom();
-    mockup.getLayer()?.batchDraw();
-}
