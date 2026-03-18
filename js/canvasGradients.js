@@ -126,7 +126,7 @@ function clearRectGradient(rect) {
     rect.fillPriority('color');
 }
 
-function getGradientLine(width, height, angle) {
+export function getGradientLine(width, height, angle) {
     const radians = (angle * Math.PI) / 180;
     const vx = Math.cos(radians);
     const vy = Math.sin(radians);

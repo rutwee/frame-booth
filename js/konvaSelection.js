@@ -12,14 +12,17 @@ export function createKonvaSelectionManager({ ui, appState, getTransformer, getL
     getLayer?.()?.batchDraw();
   }
 
-  function selectMockupGroup(group) {
+  function selectMockupGroup(group, options = {}) {
     const tr = getTransformer?.();
     const layer = getLayer?.();
     if (!tr || !layer) return;
+    const { preserveZOrder = false } = options;
 
     appState.setCurrentSelectedMockup(group);
     tr.nodes([group]);
-    group.moveToTop();
+    if (!preserveZOrder) {
+      group.moveToTop();
+    }
     tr.moveToTop();
     setSelectionButtonsDisabled(false);
     layer.batchDraw();

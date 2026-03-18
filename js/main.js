@@ -1,7 +1,3 @@
-// ==========================================================================
-// APPLICATION ENTRY POINT
-// ==========================================================================
-
 import * as UI from './ui.js';
 import * as Helpers from './helpers.js';
 import { AppState, frames } from './state.js';
@@ -12,15 +8,13 @@ import {
     tr,
     updateKonvaCanvasBackground,
     setCanvasBackgroundImageFromFile,
+    addCanvasText,
+    getSelectedCanvasTextSnapshot,
+    updateSelectedCanvasText,
     getCanvasBackgroundImageState,
     restoreCanvasBackgroundImageState,
 } from './konvaSetup.js';
 import { initExport, updateDownloadSceneButtonState } from './export.js';
-import {
-    detectIPhoneScreenshotProfile,
-    getTargetIslandLocalRect,
-    calculateScreenshotPlacement,
-} from './screenshotUtils.js';
 import { initZoomPanControls } from './viewportControls.js';
 import { createHistoryManager } from './historyManager.js';
 import { createUploadManager } from './uploadManager.js';
@@ -28,6 +22,9 @@ import { createFrameActions } from './frameActions.js';
 import { createLayoutManager } from './layoutManager.js';
 import { CANVAS_GRADIENTS, getDefaultCanvasGradientId } from './canvasGradients.js';
 import { createGradientEditor } from './gradientEditor.js';
+import { placeImageInMockup } from './mockupPlacement.js';
+import { initResponsiveToolbarToggle } from './toolbarToggle.js';
+import { createCanvasTextPanel } from './canvasTextPanel.js';
 import { collectMockupNodes } from './sceneUtils.js';
 
 const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
@@ -39,7 +36,8 @@ let historyManager = null;
 let uploadManager = null;
 let frameActions = null;
 let layoutManager = null;
-let gradientEditor = null;
+let gradientEditors = [];
+let canvasTextPanel = null;
 let framesChangedHistoryTimer = null;
 
 function clamp(value, min, max) {
@@ -47,7 +45,11 @@ function clamp(value, min, max) {
 }
 
 function isTypingInFormField() {
-    return EDITABLE_TAGS.includes(document.activeElement?.tagName);
+    const active = document.activeElement;
+    if (!active) return false;
+    if (EDITABLE_TAGS.includes(active.tagName)) return true;
+    if (active.isContentEditable) return true;
+    return !!active.closest?.('#canvasTextPanel');
 }
 
 function clampZoom(value) {
@@ -92,47 +94,6 @@ function bindCanvasSizeCommitInput(inputEl) {
     });
 }
 
-function initResponsiveToolbarToggle() {
-    const toggleBtn = document.querySelector('#toolbarToggleBtn');
-    const backdrop = document.querySelector('#toolbarBackdrop');
-    if (!toggleBtn || !backdrop) return;
-
-    const phoneMediaQuery = window.matchMedia('(max-width: 768px)');
-    const syncToggleButtonVisibility = () => {
-        const isPhone = phoneMediaQuery.matches;
-        toggleBtn.style.display = isPhone ? 'grid' : 'none';
-        if (!isPhone) {
-            setOpenState(false);
-        }
-    };
-    const setOpenState = (open) => {
-        const shouldOpen = !!open && phoneMediaQuery.matches;
-        document.body.classList.toggle('toolbar-open', shouldOpen);
-        toggleBtn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-        backdrop.hidden = !shouldOpen;
-    };
-
-    toggleBtn.addEventListener('click', () => {
-        const isOpen = document.body.classList.contains('toolbar-open');
-        setOpenState(!isOpen);
-    });
-    backdrop.addEventListener('click', () => setOpenState(false));
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') setOpenState(false);
-    });
-    const onMediaChange = (e) => {
-        if (!e.matches) setOpenState(false);
-        syncToggleButtonVisibility();
-    };
-    if (typeof phoneMediaQuery.addEventListener === 'function') {
-        phoneMediaQuery.addEventListener('change', onMediaChange);
-    } else if (typeof phoneMediaQuery.addListener === 'function') {
-        phoneMediaQuery.addListener(onMediaChange);
-    }
-    setOpenState(false);
-    syncToggleButtonVisibility();
-}
-
 async function addMockupByFrameId(frameId, options) {
     const previousFrameId = UI.frameSelect.value;
     try {
@@ -141,15 +102,6 @@ async function addMockupByFrameId(frameId, options) {
     } finally {
         UI.frameSelect.value = previousFrameId;
     }
-}
-
-function populateCanvasGradientOptions() {
-    if (!UI.bgGradient) return;
-    UI.bgGradient.innerHTML = '';
-    CANVAS_GRADIENTS.forEach((preset) => {
-        UI.bgGradient.appendChild(new Option(preset.name, preset.id));
-    });
-    UI.bgGradient.value = getDefaultCanvasGradientId();
 }
 
 function populateFrameOptions() {
@@ -172,21 +124,85 @@ function populateFrameOptions() {
     }
 }
 
-// Bind all runtime UI + keyboard events after modules are initialized.
+function populateCanvasGradientOptions() {
+    populateGradientOptions(UI.bgGradient, {
+        includeNone: true,
+        defaultValue: getDefaultCanvasGradientId(),
+    });
+}
+
+function populateTextGradientOptions() {
+    populateGradientOptions(UI.canvasTextColorGradient, { defaultValue: 'solid' });
+    populateGradientOptions(UI.canvasTextHighlightGradient, {
+        includeNone: true,
+        defaultValue: 'none',
+    });
+}
+
+function populateGradientOptions(selectEl, { includeNone = false, defaultValue = 'solid' } = {}) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
+    if (includeNone) selectEl.appendChild(new Option('None', 'none'));
+    CANVAS_GRADIENTS.forEach((preset) => {
+        if (preset.id === 'none') return;
+        selectEl.appendChild(new Option(preset.name, preset.id));
+    });
+    selectEl.value = defaultValue;
+}
+
+function syncGradientEditorsVisibility() {
+    gradientEditors.forEach((editor) => editor?.syncVisibility?.());
+}
+
+function ensureCanvasEnabledForOverlay() {
+    if (!UI.canvasEnabled || UI.canvasEnabled.checked) return;
+    UI.canvasEnabled.checked = true;
+    layoutManager?.applyCanvasMode();
+    syncGradientEditorsVisibility();
+}
+
+function createTextCustomGradientEditor({ modeSource, refs, textGradientKey }) {
+    return createGradientEditor({
+        ui: UI,
+        isTypingInFormField,
+        modeSources: [modeSource],
+        refs,
+        onChange: () => {
+            const selected = getSelectedCanvasTextSnapshot();
+            if (selected?.[textGradientKey] === 'custom') {
+                updateSelectedCanvasText({ [textGradientKey]: 'custom' });
+                canvasTextPanel?.sync();
+            }
+            historyManager?.push();
+        },
+    });
+}
+
+function getGradientEditorRefs(prefix) {
+    const capitalizedPrefix = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+    return {
+        panel: UI[`${prefix}CustomPanel`],
+        editor: UI[`${prefix}Editor`],
+        bar: UI[`${prefix}Bar`],
+        stopsLayer: UI[`${prefix}StopsLayer`],
+        stopColor: UI[`${prefix}StopColor`],
+        angle: UI[`${prefix}Angle`],
+        angleValue: UI[`${prefix}AngleValue`],
+        data: UI[`custom${capitalizedPrefix}Data`],
+    };
+}
+
 function bindRuntimeEventHandlers() {
     UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
     bindCanvasSizeCommitInput(UI.docWidth);
     bindCanvasSizeCommitInput(UI.docHeight);
     UI.canvasEnabled?.addEventListener('change', () => {
         layoutManager?.applyCanvasMode();
-        gradientEditor?.syncVisibility?.();
+        syncGradientEditorsVisibility();
+        canvasTextPanel?.sync();
     });
     UI.canvasImageBtn?.addEventListener('click', () => {
-        if (UI.canvasEnabled && !UI.canvasEnabled.checked) {
-            UI.canvasEnabled.checked = true;
-            layoutManager?.applyCanvasMode();
-            gradientEditor?.syncVisibility?.();
-        }
+        ensureCanvasEnabledForOverlay();
         UI.bgImageInput?.click();
     });
     UI.bgImageInput?.addEventListener('change', async (event) => {
@@ -221,18 +237,17 @@ function bindRuntimeEventHandlers() {
     window.addEventListener('canvas-bg-images-changed', () => {
         historyManager?.push();
     });
+    window.addEventListener('canvas-overlay-selection-changed', () => {
+        canvasTextPanel?.sync();
+    });
     getStage()?.on('dragend transformend', () => historyManager?.push());
     layoutManager.bindWindowResize();
 }
 
-// ==========================================================================
-// INITIALIZATION - initializeApp()
-// ==========================================================================
 async function initializeApp() {
-    // --- initial UI setup ---
     populateFrameOptions();
     populateCanvasGradientOptions();
-    // responsive default canvas size for mobile
+    populateTextGradientOptions();
     if (window.innerWidth <= 768) {
         UI.docWidth.value = 350;
         UI.docHeight.value = 600;
@@ -244,7 +259,6 @@ async function initializeApp() {
     Helpers.resizeDocument();
     initResponsiveToolbarToggle();
 
-    // --- Initialize modules ---
     initKonva();
     layoutManager = createLayoutManager({
         ui: UI,
@@ -290,17 +304,37 @@ async function initializeApp() {
         redo: () => historyManager?.redo(),
         isTypingInFormField,
     });
-    gradientEditor = createGradientEditor({
+    gradientEditors = [
+        createGradientEditor({
+            ui: UI,
+            isTypingInFormField,
+            modeSources: [UI.bgGradient],
+            onChange: () => {
+                Helpers.updateMockupBackground();
+                updateKonvaCanvasBackground();
+                historyManager?.push();
+            },
+        }),
+        ...[
+            { modeSource: UI.canvasTextColorGradient, textGradientKey: 'textGradientId', refPrefix: 'textGradient' },
+            { modeSource: UI.canvasTextHighlightGradient, textGradientKey: 'textHighlightGradientId', refPrefix: 'textHighlightGradient' },
+        ].map((config) => createTextCustomGradientEditor({
+            modeSource: config.modeSource,
+            textGradientKey: config.textGradientKey,
+            refs: getGradientEditorRefs(config.refPrefix),
+        })),
+    ];
+    gradientEditors.forEach((editor) => editor.init());
+    canvasTextPanel = createCanvasTextPanel({
         ui: UI,
-        isTypingInFormField,
-        onChange: () => {
-            Helpers.updateMockupBackground();
-            updateKonvaCanvasBackground();
-            historyManager?.push();
-        },
+        getSelectedSnapshot: getSelectedCanvasTextSnapshot,
+        updateSelected: updateSelectedCanvasText,
+        ensureCanvasEnabled: ensureCanvasEnabledForOverlay,
+        addCanvasText,
     });
-    gradientEditor.init();
+    canvasTextPanel.bind();
     layoutManager.applyCanvasMode({ skipHistory: true });
+    canvasTextPanel.sync();
     initExport();
     resetViewportTransform = initZoomPanControls({
         previewWrap: document.querySelector('.preview-wrap'),
@@ -311,7 +345,6 @@ async function initializeApp() {
     });
     uploadManager.initDragAndDropUpload();
 
-    // --- Add the default frame ---
     try {
         await addMockup();
     } catch (error) {
@@ -324,77 +357,8 @@ async function initializeApp() {
     historyManager.captureInitialScene();
     updateDownloadSceneButtonState();
 
-    // --- Bind event listeners ---
     bindRuntimeEventHandlers();
-
-    // --- Start background rendering ---
     layoutManager.renderBackground();
 }
 
 window.addEventListener('DOMContentLoaded', initializeApp);
-
-
-// ==========================================================================
-// IMAGE PLACING - placeImageInMockup()
-// ==========================================================================
-export function placeImageInMockup(img, mockup) {
-    mockup.find('.upload-placeholder').forEach(node => node.destroy());
-    mockup.find('.screenshot-container').forEach(node => node.destroy());
-
-    const frameId = mockup.getAttr('frameId');
-    const frameData = frames.find(f => f.id === frameId);
-    if (!frameData || !frameData.screen) return;
-
-    const frameNode = mockup.getChildren(node => node.getClassName() === 'Image')[0];
-    const frameImage = frameNode.image();
-    if (!frameImage) return;
-    const frameScale = frameNode.width() / frameImage.width;
-
-    const screenContainer = {
-        x: frameData.screen.x * frameScale, y: frameData.screen.y * frameScale,
-        width: frameData.screen.width * frameScale, height: frameData.screen.height * frameScale,
-    };
-    const targetIslandRect = getTargetIslandLocalRect(frameData, frameScale);
-    const sourceProfile = detectIPhoneScreenshotProfile(img.width, img.height);
-
-    const clipGroup = new Konva.Group({
-        x: screenContainer.x, y: screenContainer.y, name: 'screenshot-container',
-        clipFunc: function(ctx) {
-            const scaledRadius = frameData.screen.cornerRadius * frameScale;
-            ctx.beginPath();
-            ctx.roundRect(0, 0, screenContainer.width, screenContainer.height, scaledRadius);
-            if (targetIslandRect) {
-                ctx.roundRect(
-                    targetIslandRect.x,
-                    targetIslandRect.y,
-                    targetIslandRect.width,
-                    targetIslandRect.height,
-                    targetIslandRect.cornerRadius
-                );
-            }
-            ctx.closePath();
-        }
-    });
-
-    const photoPlacement = calculateScreenshotPlacement(
-        img,
-        screenContainer,
-        targetIslandRect,
-        sourceProfile
-    );
-
-    const photo = new Konva.Image({
-        image: img,
-        x: photoPlacement.x,
-        y: photoPlacement.y,
-        width: photoPlacement.width,
-        height: photoPlacement.height,
-        name: 'screenshot',
-        imageSmoothingEnabled: true
-    });
-
-    clipGroup.add(photo);
-    mockup.add(clipGroup);
-    clipGroup.moveToBottom();
-    mockup.getLayer()?.batchDraw();
-}

@@ -50,9 +50,17 @@ function normalizeHexColor(value, fallback) {
 }
 
 export function getCurrentCustomGradientConfig() {
+    return getCurrentGradientConfig(customGradientData);
+}
+
+export function getCurrentGradientConfig(inputEl = customGradientData) {
+    return getCustomGradientConfigFromInput(inputEl);
+}
+
+function getCustomGradientConfigFromInput(inputEl) {
     const defaults = getDefaultCustomGradient();
     try {
-        const raw = JSON.parse(customGradientData?.value || '{}');
+        const raw = JSON.parse(inputEl?.value || '{}');
         const rawStops = Array.isArray(raw?.stops) ? raw.stops : [];
         const stops = rawStops
             .filter((stop) => stop && typeof stop === 'object')
