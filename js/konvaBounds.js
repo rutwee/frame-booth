@@ -1,3 +1,5 @@
+import { collectMockupNodes } from './sceneUtils.js';
+
 const AUTO_LAYOUT_MARGIN = 24;
 const AUTO_LAYOUT_GAP = 24;
 
@@ -48,10 +50,8 @@ export function createKonvaBoundsHelpers({ getStage, getLastAddedMockup } = {}) 
 
   function getAutoPlacement(frameWidth, frameHeight) {
     const stage = getStage?.();
-    if (!stage?.find) return { x: 0, y: 0 };
-
-    const found = stage.find('.mockup-group');
-    const groups = typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
+    if (!stage) return { x: 0, y: 0 };
+    const groups = collectMockupNodes(stage);
     if (!groups.length) return getCenteredPosition(stage, frameWidth, frameHeight);
 
     const lastAddedMockup = getLastAddedMockup?.();

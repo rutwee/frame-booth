@@ -2,8 +2,7 @@
 
 Frame Booth is a browser-based mockup tool for placing screenshots into iPhone frames, arranging multiple frames, and exporting high-quality PNGs.
 
-## Product Example
-![Frame Booth Product Example](assets/product-example.png)
+## Run : https://rutwee.github.io/frame-booth/
 
 ## Features
 - Add/update/delete iPhone frame mockups
@@ -20,8 +19,6 @@ Frame Booth is a browser-based mockup tool for placing screenshots into iPhone f
 ## Tech Stack
 - HTML, CSS, JavaScript (ES modules)
 - [Konva.js](https://konvajs.org/) for stage/canvas interactions
-
-## Run : https://rutwee.github.io/frame-booth/
 
 ## Project Structure
 - `index.html` - app layout
@@ -44,6 +41,9 @@ Frame Booth is a browser-based mockup tool for placing screenshots into iPhone f
 - `Ctrl/Cmd + wheel` - zoom
 - `0` - reset zoom/pan
 - `Delete/Backspace` - delete selected frame/content
+
+## Product Example
+![Frame Booth Product Example](assets/product-example.png)
 
 ## Contact
 - Email: `framebooth.ca@gmail.com`

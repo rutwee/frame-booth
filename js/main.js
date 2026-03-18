@@ -25,6 +25,7 @@ import { createGradientEditor } from './gradientEditor.js';
 import { placeImageInMockup } from './mockupPlacement.js';
 import { initResponsiveToolbarToggle } from './toolbarToggle.js';
 import { createCanvasTextPanel } from './canvasTextPanel.js';
+import { collectMockupNodes } from './sceneUtils.js';
 
 const EDITABLE_TAGS = ['INPUT', 'SELECT', 'TEXTAREA'];
 const MIN_ZOOM = 0.1;
@@ -59,16 +60,10 @@ function getStage() {
     return Konva.stages?.[0] || null;
 }
 
-function getMockupGroups(stage) {
-    if (!stage?.find) return [];
-    const found = stage.find('.mockup-group');
-    return typeof found?.toArray === 'function' ? found.toArray() : Array.from(found || []);
-}
-
 async function ensureInitialFrameVisible() {
     const stage = getStage();
     if (!stage) return;
-    if (getMockupGroups(stage).length > 0) return;
+    if (collectMockupNodes(stage).length > 0) return;
     try {
         await addMockup();
     } catch (error) {
@@ -106,6 +101,26 @@ async function addMockupByFrameId(frameId, options) {
         return await addMockup(options);
     } finally {
         UI.frameSelect.value = previousFrameId;
+    }
+}
+
+function populateFrameOptions() {
+    const groupedFrames = frames.reduce((acc, frame) => {
+        (acc[frame.group] = acc[frame.group] || []).push(frame);
+        return acc;
+    }, {});
+
+    UI.frameSelect.innerHTML = '';
+    Object.keys(groupedFrames).forEach(groupName => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = groupName;
+        groupedFrames[groupName].forEach(frame => {
+            optgroup.appendChild(new Option(frame.name, frame.id));
+        });
+        UI.frameSelect.appendChild(optgroup);
+    });
+    if (UI.frameSelect.options.length > 0) {
+        UI.frameSelect.options[0].selected = true;
     }
 }
 
@@ -177,30 +192,64 @@ function getGradientEditorRefs(prefix) {
     };
 }
 
-async function initializeApp() {
-    // --- initial UI setup ---
-    const groupedFrames = frames.reduce((acc, frame) => {
-        (acc[frame.group] = acc[frame.group] || []).push(frame);
-        return acc;
-    }, {});
-
-    Object.keys(groupedFrames).forEach(groupName => {
-        const optgroup = document.createElement('optgroup');
-        optgroup.label = groupName;
-        groupedFrames[groupName].forEach(frame => {
-            const option = new Option(frame.name, frame.id);
-            optgroup.appendChild(option);
-        });
-        UI.frameSelect.appendChild(optgroup);
+function bindRuntimeEventHandlers() {
+    UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
+    bindCanvasSizeCommitInput(UI.docWidth);
+    bindCanvasSizeCommitInput(UI.docHeight);
+    UI.canvasEnabled?.addEventListener('change', () => {
+        layoutManager?.applyCanvasMode();
+        syncGradientEditorsVisibility();
+        canvasTextPanel?.sync();
     });
-    if (UI.frameSelect.options.length > 0) {
-        UI.frameSelect.options[0].selected = true;
-    }
+    UI.canvasImageBtn?.addEventListener('click', () => {
+        ensureCanvasEnabledForOverlay();
+        UI.bgImageInput?.click();
+    });
+    UI.bgImageInput?.addEventListener('change', async (event) => {
+        const file = event.target?.files?.[0];
+        if (!file) {
+            UI.bgImageInput.value = '';
+            return;
+        }
+        try {
+            await setCanvasBackgroundImageFromFile(file);
+            updateKonvaCanvasBackground();
+            historyManager?.push();
+        } catch (error) {
+            alert(error?.message || 'Sorry, there was an error processing your image.');
+        } finally {
+            UI.bgImageInput.value = '';
+        }
+    });
+    UI.undoBtn?.addEventListener('click', () => historyManager?.undo());
+    UI.redoBtn?.addEventListener('click', () => historyManager?.redo());
+    UI.resetBtn?.addEventListener('click', () => historyManager?.reset(() => resetViewportTransform?.()));
+    UI.uploadBtn.addEventListener('click', () => UI.fileInput.click());
+    UI.fileInput.addEventListener('change', uploadManager.handleImageUpload);
+    UI.addFrameBtn.addEventListener('click', addMockup);
+    UI.updateFrameBtn.addEventListener('click', frameActions.handleFrameSwap);
+    window.addEventListener('keydown', frameActions.handleGlobalShortcuts);
+    window.addEventListener('frames-changed', () => {
+        layoutManager?.fitMockupsToViewport?.();
+        updateDownloadSceneButtonState();
+        scheduleHistoryPushFromFramesChanged();
+    });
+    window.addEventListener('canvas-bg-images-changed', () => {
+        historyManager?.push();
+    });
+    window.addEventListener('canvas-overlay-selection-changed', () => {
+        canvasTextPanel?.sync();
+    });
+    getStage()?.on('dragend transformend', () => historyManager?.push());
+    layoutManager.bindWindowResize();
+}
+
+async function initializeApp() {
+    populateFrameOptions();
     populateCanvasGradientOptions();
     populateTextGradientOptions();
-    // responsive default canvas size for mobile
-    if (window.innerWidth <= 768) { 
-        UI.docWidth.value = 350; 
+    if (window.innerWidth <= 768) {
+        UI.docWidth.value = 350;
         UI.docHeight.value = 600;
     }
     if (UI.canvasEnabled) {
@@ -210,7 +259,6 @@ async function initializeApp() {
     Helpers.resizeDocument();
     initResponsiveToolbarToggle();
 
-    // --- Initialize modules ---
     initKonva();
     layoutManager = createLayoutManager({
         ui: UI,
@@ -228,7 +276,7 @@ async function initializeApp() {
         addMockupByFrameId,
         applyCanvasMode: (options) => layoutManager?.applyCanvasMode(options),
         getStage,
-        getMockupGroups,
+        getMockupGroups: collectMockupNodes,
         placeImageInMockup,
         getCanvasBackgroundImageState,
         restoreCanvasBackgroundImageState,
@@ -297,7 +345,6 @@ async function initializeApp() {
     });
     uploadManager.initDragAndDropUpload();
 
-    // --- Add the default frame ---
     try {
         await addMockup();
     } catch (error) {
@@ -308,59 +355,9 @@ async function initializeApp() {
         ensureInitialFrameVisible();
     }, 120);
     historyManager.captureInitialScene();
+    updateDownloadSceneButtonState();
 
-    // --- Bind event listeners ---
-    UI.bgColor.addEventListener('input', Helpers.updateMockupBackground);
-    bindCanvasSizeCommitInput(UI.docWidth);
-    bindCanvasSizeCommitInput(UI.docHeight);
-    UI.canvasEnabled?.addEventListener('change', () => {
-        layoutManager?.applyCanvasMode();
-        syncGradientEditorsVisibility();
-        canvasTextPanel?.sync();
-    });
-    UI.canvasImageBtn?.addEventListener('click', () => {
-        ensureCanvasEnabledForOverlay();
-        UI.bgImageInput?.click();
-    });
-    UI.bgImageInput?.addEventListener('change', async (event) => {
-        const file = event.target?.files?.[0];
-        if (!file) {
-            UI.bgImageInput.value = '';
-            return;
-        }
-        try {
-            await setCanvasBackgroundImageFromFile(file);
-            updateKonvaCanvasBackground();
-            historyManager?.push();
-        } catch (error) {
-            alert(error?.message || 'Sorry, there was an error processing your image.');
-        } finally {
-            UI.bgImageInput.value = '';
-        }
-    });
-    UI.undoBtn?.addEventListener('click', () => historyManager?.undo());
-    UI.redoBtn?.addEventListener('click', () => historyManager?.redo());
-    UI.resetBtn?.addEventListener('click', () => historyManager?.reset(() => resetViewportTransform?.()));
-    UI.uploadBtn.addEventListener('click', () => UI.fileInput.click());
-    UI.fileInput.addEventListener('change', uploadManager.handleImageUpload);
-    UI.addFrameBtn.addEventListener('click', addMockup);
-    UI.updateFrameBtn.addEventListener('click', frameActions.handleFrameSwap);
-    window.addEventListener('keydown', frameActions.handleGlobalShortcuts);
-    window.addEventListener('frames-changed', () => {
-        layoutManager?.fitMockupsToViewport?.();
-        updateDownloadSceneButtonState();
-        scheduleHistoryPushFromFramesChanged();
-    });
-    window.addEventListener('canvas-bg-images-changed', () => {
-        historyManager?.push();
-    });
-    window.addEventListener('canvas-overlay-selection-changed', () => {
-        canvasTextPanel?.sync();
-    });
-    getStage()?.on('dragend transformend', () => historyManager?.push());
-    layoutManager.bindWindowResize();
-
-    // --- Start background rendering ---
+    bindRuntimeEventHandlers();
     layoutManager.renderBackground();
 }
 

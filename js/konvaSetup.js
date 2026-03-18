@@ -2,27 +2,17 @@
 
 import * as UI from "./ui.js";
 import { frames, AppState } from "./state.js";
-import {
-  loadImage,
-  isCanvasEnabled,
-  getCurrentCustomGradientConfig,
-} from "./helpers.js";
+import { loadImage, isCanvasEnabled, getCurrentCustomGradientConfig } from "./helpers.js";
 import { createKonvaBoundsHelpers } from "./konvaBounds.js";
 import { createKonvaPlaceholderFactory } from "./konvaPlaceholder.js";
 import { createKonvaSelectionManager } from "./konvaSelection.js";
 import { createKonvaOrderMenuController } from "./konvaOrderMenu.js";
-import {
-  applyCanvasGradientToRect,
-  getDefaultCanvasGradientId,
-} from "./canvasGradients.js";
-import {
-  CANVAS_TEXT_CLASS,
-  isCanvasTextNode,
-  syncCanvasTextHighlightNode,
-} from "./konvaCanvasText.js";
+import { applyCanvasGradientToRect, getDefaultCanvasGradientId } from "./canvasGradients.js";
+import { CANVAS_TEXT_CLASS, isCanvasTextNode, syncCanvasTextHighlightNode } from "./konvaCanvasText.js";
 import { createKonvaCanvasOverlayManager } from "./konvaCanvasOverlay.js";
+import { collectMockupNodes } from "./sceneUtils.js";
+import { createKonvaOutsideHandlesController } from "./konvaOutsideHandles.js";
 
-// variables for the Konva stage and its components //
 let stage;
 let layer;
 export let tr;
@@ -34,6 +24,7 @@ let placeholderFactory;
 let selectionManager;
 let orderMenuController;
 let canvasOverlayManager;
+let outsideHandlesController;
 
 const EDITABLE_TAGS = ["INPUT", "SELECT", "TEXTAREA"];
 let canvasImageTransformer = null;
@@ -59,6 +50,19 @@ function notifyCanvasBackgroundImagesChanged() {
   window.dispatchEvent(new Event("canvas-bg-images-changed"));
 }
 
+function getMockupGroups() {
+  return collectMockupNodes(stage);
+}
+
+function isActiveSelectionNode(node, name) {
+  return !!(node?.hasName?.(name) && node?.getStage?.() === stage);
+}
+
+function getSelectedMockupNode() {
+  const node = tr?.nodes?.()?.[0] || null;
+  return isActiveSelectionNode(node, MOCKUP_GROUP_CLASS) ? node : null;
+}
+
 function clearCanvasBackgroundImageSelection() {
   canvasOverlayManager?.clearSelection();
 }
@@ -77,8 +81,7 @@ function getSelectedStageNode() {
 
 function getSelectableNodesAtPoint(pos) {
   if (!stage || !pos) return [];
-  const found = stage.find(`.${MOCKUP_GROUP_CLASS}`);
-  const groups = typeof found?.toArray === "function" ? found.toArray() : Array.from(found || []);
+  const groups = getMockupGroups();
   const candidates = [...groups, ...getCanvasOverlayNodes()]
     .filter((node) => node?.isVisible?.())
     .filter((node) => {
@@ -96,8 +99,7 @@ function getSelectableNodesAtPoint(pos) {
 
 function getReorderableNodes() {
   if (!stage) return [];
-  const found = stage.find(`.${MOCKUP_GROUP_CLASS}`);
-  const groups = typeof found?.toArray === "function" ? found.toArray() : Array.from(found || []);
+  const groups = getMockupGroups();
   return [...groups, ...getCanvasOverlayNodes()]
     .filter((node) => node?.isVisible?.())
     .sort((a, b) => (a.getAbsoluteZIndex?.() || 0) - (b.getAbsoluteZIndex?.() || 0));
@@ -141,7 +143,6 @@ function selectCanvasOverlayNode(node) {
   canvasOverlayManager?.selectOverlayNode(node);
 }
 
-// Add a lightweight canvas text node.
 export function addCanvasText(snapshot = null, options = {}) {
   return canvasOverlayManager?.addText(snapshot, options) || null;
 }
@@ -181,24 +182,15 @@ export function updateKonvaCanvasBackground() {
     customGradient: getCurrentCustomGradientConfig(),
   });
   syncCanvasBackgroundImageVisibility();
+  outsideHandlesController?.refresh?.();
   layer.batchDraw();
 }
 
-/**
- * Creates and adds an "Upload an Image" placeholder to a mockup group.
- * The placeholder is clickable and opens the file input dialog.
- * @param {Konva.Group} group The parent mockup group.
- * @param {object} frameData The data object for the frame.
- * @param {number} scale The calculated scale of the frame.
- */
-
-// PLACEHOLDER - createAndAddPlaceholder()
 async function createAndAddPlaceholder(group, frameData, scale) {
   if (!placeholderFactory) return;
   await placeholderFactory.createAndAddPlaceholder(group, frameData, scale);
 }
 
-// DELETE MOCKUP - deleteSelectedMockup()
 async function deleteSelectedMockup() {
   if (!tr || !layer) return;
 
@@ -211,18 +203,14 @@ async function deleteSelectedMockup() {
   if (!selected) return;
 
   const screenshotContainer = selected.findOne(".screenshot-container");
-
   if (screenshotContainer) {
     screenshotContainer.destroy();
 
     const frameId = selected.getAttr("frameId");
     const frameData = frames.find((f) => f.id === frameId);
-    const frameNode = selected.getChildren(
-      (node) => node.getClassName() === "Image",
-    )[0];
+    const frameNode = selected.getChildren((node) => node.getClassName() === "Image")[0];
     const frameImage = frameNode?.image();
-    const scale =
-      frameNode && frameImage ? frameNode.width() / frameImage.width : 0;
+    const scale = frameNode && frameImage ? frameNode.width() / frameImage.width : 0;
 
     if (frameData && frameNode && frameImage) {
       await createAndAddPlaceholder(selected, frameData, scale);
@@ -237,26 +225,16 @@ async function deleteSelectedMockup() {
   notifyFramesChanged();
 }
 
-// ADD MOCKUP - addMockup()
 export async function addMockup(options = {}) {
   if (!stage || !layer || !tr) return null;
-  const {
-    initialState = null,
-    skipSelect = false,
-    skipNotify = false,
-  } = options;
+  const { initialState = null, skipSelect = false, skipNotify = false } = options;
 
   const frameData = frames.find((f) => f.id === UI.frameSelect.value);
   if (!frameData) return null;
 
-  /* Calculate a dynamic size for the new frame to fit nicely on the canvas */
   const maxCanvasHeight = initialStageHeight * 0.8;
-  const maxOriginalHeight = Math.max(
-    ...frames.map((f) => f.originalHeight || 0),
-    1,
-  );
-  const desiredHeight =
-    (frameData.originalHeight / maxOriginalHeight) * maxCanvasHeight;
+  const maxOriginalHeight = Math.max(...frames.map((f) => f.originalHeight || 0), 1);
+  const desiredHeight = (frameData.originalHeight / maxOriginalHeight) * maxCanvasHeight;
 
   const frameImg = await loadImage(frameData.src);
   const scale = desiredHeight / frameImg.height;
@@ -283,9 +261,7 @@ export async function addMockup(options = {}) {
     group.scale({ x: initialState.scaleX || 1, y: initialState.scaleY || 1 });
     group.rotation(initialState.rotation || 0);
   } else {
-    group.position(
-      boundsHelpers?.getAutoPlacement(frameWidth, frameHeight) || { x: 0, y: 0 },
-    );
+    group.position(boundsHelpers?.getAutoPlacement(frameWidth, frameHeight) || { x: 0, y: 0 });
   }
   boundsHelpers?.constrainGroupToStage(group);
 
@@ -300,9 +276,11 @@ export async function addMockup(options = {}) {
   });
   group.on("dragmove transform", () => {
     boundsHelpers?.constrainGroupToStage(group);
+    outsideHandlesController?.refresh?.();
   });
   group.on("dragend transformend", () => {
     boundsHelpers?.constrainGroupToStage(group);
+    outsideHandlesController?.refresh?.();
     notifyFramesChanged();
   });
 
@@ -319,7 +297,6 @@ export async function addMockup(options = {}) {
   return group;
 }
 
-// KONVA INITIALIZATION - initKonva()
 export function initKonva() {
   stage = new Konva.Stage({
     container: "mockupArea",
@@ -353,6 +330,7 @@ export function initKonva() {
     borderDash: [4, 4],
   });
   layer.add(tr);
+
   canvasImageTransformer = new Konva.Transformer({
     rotateEnabled: true,
     resizeEnabled: true,
@@ -365,18 +343,7 @@ export function initKonva() {
     borderDash: [4, 4],
   });
   layer.add(canvasImageTransformer);
-  canvasOverlayManager = createKonvaCanvasOverlayManager({
-    stage,
-    layer,
-    tr,
-    canvasImageTransformer,
-    deleteButton: UI.deleteBtn,
-    isCanvasEnabled: () => isCanvasEnabled(),
-    loadImage,
-    getOrderMenuController: () => orderMenuController,
-    clearFrameSelection: () => selectionManager?.clearSelection(),
-    onOverlaysChanged: notifyCanvasBackgroundImagesChanged,
-  });
+
   boundsHelpers = createKonvaBoundsHelpers({
     getStage: () => stage,
     getLastAddedMockup: () => lastAddedMockup,
@@ -387,6 +354,23 @@ export function initKonva() {
     getTransformer: () => tr,
     getLayer: () => layer,
   });
+
+  canvasOverlayManager = createKonvaCanvasOverlayManager({
+    stage,
+    layer,
+    tr,
+    canvasImageTransformer,
+    deleteButton: UI.deleteBtn,
+    isCanvasEnabled: () => isCanvasEnabled(),
+    loadImage,
+    getOrderMenuController: () => orderMenuController,
+    clearFrameSelection: () => selectionManager?.clearSelection(),
+    onOverlaysChanged: () => {
+      notifyCanvasBackgroundImagesChanged();
+      outsideHandlesController?.refresh?.();
+    },
+  });
+
   orderMenuController = createKonvaOrderMenuController({
     stage,
     layer,
@@ -395,8 +379,7 @@ export function initKonva() {
     getSelectedNode: getSelectedStageNode,
     getSelectableNodesAtPoint,
     getReorderableNodes,
-    isReorderableNode: (node) =>
-      isCanvasOverlayNode(node) || node?.hasName?.(MOCKUP_GROUP_CLASS),
+    isReorderableNode: (node) => isCanvasOverlayNode(node) || node?.hasName?.(MOCKUP_GROUP_CLASS),
     isFrameNode: (node) => node?.hasName?.(MOCKUP_GROUP_CLASS),
     selectNode: selectStageNode,
     onApplyNodeZIndex: applyReorderNodeZIndex,
@@ -407,6 +390,7 @@ export function initKonva() {
     getSelectableNodesAtPoint(stage?.getPointerPosition?.())[0] || null,
   );
   orderMenuController.bindDismissHandlers();
+
   placeholderFactory = createKonvaPlaceholderFactory({
     loadImage,
     fileInput: UI.fileInput,
@@ -415,57 +399,67 @@ export function initKonva() {
       selectionManager?.selectMockupGroup(group);
     },
   });
+
+  outsideHandlesController = createKonvaOutsideHandlesController({
+    getStage: () => stage,
+    getLayer: () => layer,
+    getFrameTransformer: () => tr,
+    getCanvasImageTransformer: () => canvasImageTransformer,
+    getSelectedFrameNode: getSelectedMockupNode,
+    getSelectedCanvasImageNode: getSelectedCanvasBackgroundImageNode,
+    isCanvasEnabled,
+    onFrameCommit: notifyFramesChanged,
+    onCanvasImageCommit: notifyCanvasBackgroundImagesChanged,
+    constrainFrameNode: (node) => boundsHelpers?.constrainGroupToStage(node),
+  });
+  outsideHandlesController.wrapTransformerNodes(tr);
+  outsideHandlesController.wrapTransformerNodes(canvasImageTransformer);
+
   selectionManager.setSelectionButtonsDisabled(true);
 
-  /* Stage-level event listeners */
   stage.on("click", (e) => {
     orderMenuController?.resetSelectionCycle();
     orderMenuController?.hideMenu();
-    if (e.target === stage) {
-      selectionManager?.clearSelection();
-      clearCanvasBackgroundImageSelection();
-      layer.batchDraw();
-    }
+    if (e.target !== stage) return;
+    selectionManager?.clearSelection();
+    clearCanvasBackgroundImageSelection();
+    outsideHandlesController?.refresh?.();
+    layer.batchDraw();
   });
   stage.on("contextmenu", (e) => {
     const node = getSelectableAncestor(e.target);
     orderMenuController?.handleStageContextMenu(e, node || getSelectedStageNode());
   });
-  /* UI event listeners tied to Konva actions */
+
+  window.addEventListener("viewport-transform-changed", () => outsideHandlesController?.refresh?.());
+  window.addEventListener("scene-restored", () => outsideHandlesController?.refresh?.());
+  window.addEventListener("frames-changed", () => outsideHandlesController?.refresh?.());
+  window.addEventListener("canvas-bg-images-changed", () => outsideHandlesController?.refresh?.());
+
   UI.bgColor.addEventListener("input", () => {
     updateKonvaCanvasBackground();
   });
-
   UI.deleteBtn.addEventListener("click", deleteSelectedMockup);
 
   window.addEventListener("keydown", (e) => {
     if (isEditingFieldFocused()) return;
-    if (["Delete", "Backspace"].includes(e.key)) {
-      e.preventDefault();
-      deleteSelectedMockup();
-    }
+    if (!["Delete", "Backspace"].includes(e.key)) return;
+    e.preventDefault();
+    deleteSelectedMockup();
   });
 }
 
-// KONVA RESIZE - resizeKonvaStage()
 export function resizeKonvaStage() {
-  if (stage && backgroundRect && layer) {
-    stage.size({
-      width: UI.mockupArea.offsetWidth,
-      height: UI.mockupArea.offsetHeight,
-    });
-    backgroundRect.size(stage.size());
-    placeCanvasBackgroundImagesBehindFrames();
-    syncCanvasBackgroundImageVisibility();
-    updateKonvaCanvasBackground();
-    const found = stage.find(".mockup-group");
-    const groups =
-      typeof found?.toArray === "function"
-        ? found.toArray()
-        : Array.from(found || []);
-    for (const group of groups) {
-      boundsHelpers?.constrainGroupToStage(group);
-    }
-    layer.batchDraw();
+  if (!stage || !backgroundRect || !layer) return;
+  stage.size({
+    width: UI.mockupArea.offsetWidth,
+    height: UI.mockupArea.offsetHeight,
+  });
+  backgroundRect.size(stage.size());
+  placeCanvasBackgroundImagesBehindFrames();
+  for (const group of getMockupGroups()) {
+    boundsHelpers?.constrainGroupToStage(group);
   }
+  updateKonvaCanvasBackground();
+  outsideHandlesController?.refresh?.();
 }

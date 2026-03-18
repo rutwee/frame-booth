@@ -128,6 +128,6 @@ export function resizeDocument() {
 
     mockupArea.style.width = `${w}px`;
     mockupArea.style.height = `${h}px`;
-    
+
     resizeKonvaStage?.();
 }

@@ -12,6 +12,7 @@ export function createFrameActions({
 }) {
     let copiedMockupSnapshot = null;
 
+    // Capture a mockup's frame, transform, and screenshot for copy/swap flows.
     function createMockupSnapshot(mockup) {
         if (!mockup) return null;
         return {
@@ -25,6 +26,7 @@ export function createFrameActions({
         };
     }
 
+    // Reapply a captured snapshot to a new or existing mockup group.
     function applyMockupSnapshot(mockup, snapshot) {
         if (!mockup || !snapshot) return;
         mockup.x(snapshot.x);
@@ -35,6 +37,7 @@ export function createFrameActions({
         if (snapshot.image) placeImageInMockup(snapshot.image, mockup);
     }
 
+    // Paste the copied frame snapshot as a new mockup instance.
     async function pasteCopiedMockup() {
         if (!copiedMockupSnapshot?.frameId) return;
         const previousFrameId = ui.frameSelect.value;
@@ -53,6 +56,7 @@ export function createFrameActions({
         }
     }
 
+    // Replace the selected frame asset while preserving transform + screenshot.
     async function handleFrameSwap() {
         const oldMockup = appState.currentSelectedMockup;
         if (!oldMockup) return;
@@ -73,6 +77,7 @@ export function createFrameActions({
         pushHistory?.();
     }
 
+    // Global keyboard shortcuts for undo/redo and frame copy/paste.
     function handleGlobalShortcuts(e) {
         if (isTypingInFormField?.() || e.repeat) return;
         if (!(e.metaKey || e.ctrlKey)) return;

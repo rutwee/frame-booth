@@ -7,6 +7,7 @@ import {
     canvasEnabled,
 } from './ui.js';
 import {
+    asArray,
     collectMockupNodes,
     getSceneExportCropBounds,
     shouldEnableSceneDownload,
@@ -40,11 +41,17 @@ function getPrimaryLayer(stage) {
     return stage?.findOne('Layer') ?? null;
 }
 
+function getSelectedFrameNode(stage) {
+    const transformers = asArray(stage?.find?.('Transformer'));
+    for (const transformer of transformers) {
+        const node = transformer?.nodes?.()?.[0];
+        if (node?.hasName?.('mockup-group')) return node;
+    }
+    return null;
+}
+
 function withTransformerHidden(stage, work) {
-    const transformersRaw = stage.find('Transformer');
-    const transformers = typeof transformersRaw?.toArray === 'function'
-        ? transformersRaw.toArray()
-        : Array.from(transformersRaw || []);
+    const transformers = asArray(stage.find('Transformer'));
     const layer = getPrimaryLayer(stage);
     const previousNodes = transformers.map((transformer) => ({
         transformer,
@@ -159,8 +166,7 @@ export function initExport() {
         const stage = getStage();
         if (!stage) return;
 
-        const transformer = stage.findOne('Transformer');
-        const selectedNode = transformer?.nodes()[0];
+        const selectedNode = getSelectedFrameNode(stage);
         if (!selectedNode) return;
 
         const tempContainer = document.createElement('div');
